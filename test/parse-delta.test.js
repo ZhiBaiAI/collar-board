@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDelta, deltaIsEmpty, parseTaskChecklist } from '../src/parse/ac.js';
+import { parseDelta, deltaIsEmpty, parseTaskChecklist, parseDeltaIssues } from '../src/parse/ac.js';
 
 const FULL = `## ⑥ 验收标准变更（Delta）
 
@@ -63,4 +63,51 @@ test('任务清单解析勾选状态', () => {
   assert.equal(t[0].done, true);
   assert.equal(t[1].done, false);
   assert.equal(t[1].id, 'T-P001-2');
+});
+
+/* ------------------------------------------------------------------ */
+/* S5 一致性核对（collar-check.sh 同口径七类）                          */
+/* ------------------------------------------------------------------ */
+
+test('干净的 delta 不产生结构问题', () => {
+  const { issues } = parseDeltaIssues(FULL);
+  assert.deepEqual(issues, [], `不应有问题：${issues.join('；')}`);
+});
+
+test('小节内重复编号被检出', () => {
+  const { issues } = parseDeltaIssues('### ADDED\n- [ ] `AC-P001-1` a\n- [ ] `AC-P001-1` b\n');
+  assert.equal(issues.length, 1);
+  assert.ok(issues[0].includes('重复'));
+});
+
+test('跨小节同编号被检出', () => {
+  const { issues } = parseDeltaIssues('### ADDED\n- [ ] `AC-P001-1` a\n### REMOVED\n- `AC-P001-1` x\n');
+  assert.equal(issues.length, 1);
+  assert.ok(issues[0].includes('多个 delta 小节'));
+});
+
+test('FROM 无配对 TO 与孤儿 TO 都被检出', () => {
+  const a = parseDeltaIssues('### RENAMED\n- FROM: `AC-1` 没下文\n');
+  assert.equal(a.issues.length, 1);
+  assert.ok(a.issues[0].includes('没有配对的 TO'));
+  const b = parseDeltaIssues('### RENAMED\n- TO: `AC-P001-9` 没上文\n');
+  assert.equal(b.issues.length, 1);
+  assert.ok(b.issues[0].includes('没有配对的 FROM'));
+});
+
+test('TO 不是 AC-PNNN-N 形被检出', () => {
+  const { issues } = parseDeltaIssues('### RENAMED\n- FROM: `AC-1`\n- TO: `AC-9`\n');
+  assert.ok(issues.some((i) => i.includes('AC-PNNN-N')), `实际：${issues.join('；')}`);
+});
+
+test('段外 AC 孤儿行被检出', () => {
+  const { issues } = parseDeltaIssues('随便一段\n- `AC-5` 写在小节外面\n');
+  assert.equal(issues.length, 1);
+  assert.ok(issues[0].includes('不在 delta 小节内'));
+});
+
+test('疑似拼错小节标题被检出', () => {
+  // 口径同门禁：大写后以 ADD/MODI/REMO/RENA 开头但不是精确值
+  const { issues } = parseDeltaIssues('### MODIFED\n- [ ] `AC-P001-1` a\n');
+  assert.ok(issues.some((i) => i.includes('MODIFED')), `实际：${issues.join('；')}`);
 });

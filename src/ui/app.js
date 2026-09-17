@@ -15,10 +15,12 @@ import { renderMap, renderModuleDetail } from './views/map.js';
 import { renderDecisions, renderDecisionDetail } from './views/decisions.js';
 import { renderTimeline } from './views/timeline.js';
 import { renderFindings } from './views/findings.js';
+import { renderInflight } from './views/inflight.js';
 
 const TABS = [
   { id: 'overview', label: '总览' },
   { id: 'map', label: '业务地图' },
+  { id: 'inflight', label: '在途变更' },
   { id: 'decisions', label: '决策脉络' },
   { id: 'timeline', label: '变更时间线' },
   { id: 'findings', label: '结构事实' },
@@ -332,6 +334,7 @@ function renderView(model) {
   const render = {
     overview: () => renderOverview(model),
     map: () => renderMap(model),
+    inflight: () => renderInflight(model),
     decisions: () => renderDecisions(model),
     timeline: () => renderTimeline(model),
     findings: () => renderFindings(model),

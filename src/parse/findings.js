@@ -10,8 +10,24 @@ const STALE_DAYS = 90;
 const PATCH_CONVERGENCE_THRESHOLD = 3;
 // collar.yaml 与 AGENTS.md 声明的入口地图上限
 const AGENTS_MAX_LINES = 120;
+// collar-status.sh 的 patch 收敛观察期：生效 ≥ 14 天应评估收敛
+export const CONVERGE_OBSERVE_DAYS = 14;
 
-function daysBetween(fromISO, toISO) {
+// 结构门禁 S7：现状文档禁用绑定「过去某次会话」的指代词
+// 「本次提交」是执行时指代，不算泄漏，不查（与门禁同口径）
+const DEIXIS_PATTERN = /本次新增|本轮|刚才|上文提到|上次提到|本次调整|本次引入/;
+// S7 检查的现状文档集合（历史叙述模块豁免：changelog 条目、ADR、sunset、_archived、blue-print）
+const DEIXIS_ROOT_FILES = ['AGENTS.md', 'collar.yaml', 'README.md', 'README.en.md'];
+function isDeixisChecked(path) {
+  if (DEIXIS_ROOT_FILES.includes(path)) return true;
+  if (path.startsWith('skills/')) return true;
+  if (path === 'docs/specs/README.md' || path === 'docs/architecture/README.md') return true;
+  if (path.startsWith('docs/runbook/') && path.endsWith('.md')) return true;
+  if (path === 'docs/changelog/README.md') return true;
+  return false;
+}
+
+export function daysBetween(fromISO, toISO) {
   const a = Date.parse(`${fromISO}T00:00:00Z`);
   const b = Date.parse(`${toISO}T00:00:00Z`);
   if (Number.isNaN(a) || Number.isNaN(b)) return null;
@@ -44,6 +60,20 @@ export function deriveFindings(model, today) {
           title: `${where}：有技术方案但没有测试文档`,
           detail: '每个功能点的 spec.md 必须有同目录 tests.md（结构门禁 S2）。',
           evidence: mod.spec.file,
+          fix: '在同目录建 tests.md，测试点逐条回指 spec §5 的 AC-N。',
+        });
+      }
+
+      // ---- spec 负责人未认领（依据 collar-status.sh「结构缺口」）----
+      if (mod.spec && isPlaceholder(mod.spec.owner || '⟨')) {
+        add({
+          ...base,
+          kind: 'spec-owner-missing',
+          severity: 'low',
+          title: `${where}：技术方案负责人未认领`,
+          detail: '认领表要求每个功能点有明确负责人，未认领的功能点出了偏差没人可对焦。',
+          evidence: mod.spec.file,
+          fix: '在 spec.md 负责人字段填 @谁，并同步认领表。',
         });
       }
 
@@ -55,6 +85,7 @@ export function deriveFindings(model, today) {
           title: `${where}：${ac} 没有任何测试点回指`,
           detail: '技术方案声明的验收标准，在测试文档里找不到对应测试点。',
           evidence: `${mod.spec?.file || mod.path}`,
+          fix: '在 tests.md 补一条回指该编号的测试点。',
         });
       }
 
@@ -66,6 +97,7 @@ export function deriveFindings(model, today) {
           title: `${where}：${ac} 没有任何测试点回指`,
           detail: '补丁引入的验收标准，在测试文档里找不到对应测试点。',
           evidence: mod.path,
+          fix: '在 tests.md 补一条回指该编号的测试点。',
         });
       }
 
@@ -77,6 +109,7 @@ export function deriveFindings(model, today) {
           title: `${where}：测试点引用了不存在的 ${ac}`,
           detail: '测试文档回指的编号在技术方案与补丁里都找不到。',
           evidence: mod.tests?.file || mod.path,
+          fix: '改正 tests.md 里的编号（可能打错或已被 RENAMED 改名）。',
         });
       }
 
@@ -90,6 +123,7 @@ export function deriveFindings(model, today) {
             title: `${where}：${ptr.patchId} 缺少主文档反向指针`,
             detail: '补丁已存在，但技术方案里没有「已被 …取代」的标记，会读出错版本。',
             evidence: mod.spec?.file || mod.path,
+            fix: '在 spec.md 对应章节加「已被 PATCH-NNN 取代」标记与生效日期。',
           });
         }
       }
@@ -103,10 +137,26 @@ export function deriveFindings(model, today) {
           title: `${where}：补丁 delta 引用了不存在的 ${ac}`,
           detail: 'MODIFIED / REMOVED / RENAMED(FROM) 的编号必须在主文档验收标准里真实存在。',
           evidence: mod.path,
+          fix: '核对编号——可能打错、已被移除或被 RENAMED 改名。',
         });
       }
 
-      // ---- 「已验证」要求任务全勾（依据 patch 模板 ⑦ 节口径）----
+      // ---- Delta 结构一致性（依据 collar-check.sh S5 七类机械检查）----
+      for (const patch of mod.patches) {
+        for (const issue of patch.deltaIssues || []) {
+          add({
+            ...base,
+            kind: 'delta-issue',
+            severity: 'high',
+            title: `${where}：${patch.id} delta 结构错误`,
+            detail: issue,
+            evidence: patch.file,
+            fix: '按 S5 口径修正 §⑥：一个 AC 只属于一种操作、FROM/TO 配对、TO 用 AC-PNNN-N、条目归位到对应 ### 小节。',
+          });
+        }
+      }
+
+      // ---- 「已验证」要求任务全勾（依据模板实施任务节口径，patch §⑦ 与 feature §8 同查）----
       for (const patch of mod.patches) {
         const undone = patch.tasks.filter((t) => !t.done);
         if (/已验证/.test(patch.status) && patch.tasks.length && undone.length) {
@@ -117,6 +167,58 @@ export function deriveFindings(model, today) {
             title: `${where}：${patch.id} 标了「已验证」但还有 ${undone.length} 项任务未勾`,
             detail: '模板规定实施任务全部勾选且差异清单无未决项才允许标「已验证」。',
             evidence: patch.file,
+            fix: '勾完剩余任务再标「已验证」，或把状态退回「实施中」。',
+          });
+        }
+      }
+      if (mod.spec) {
+        const undone = mod.spec.tasks.filter((t) => !t.done);
+        if (/已验证/.test(mod.spec.status) && mod.spec.tasks.length && undone.length) {
+          add({
+            ...base,
+            kind: 'premature-verified',
+            severity: 'medium',
+            title: `${where}：技术方案标了「已验证」但还有 ${undone.length} 项任务未勾`,
+            detail: '模板规定实施任务全部勾选且差异清单无未决项才允许标「已验证」。',
+            evidence: mod.spec.file,
+            fix: '勾完剩余任务再标「已验证」，或把状态退回「实施中」。',
+          });
+        }
+      }
+
+      // ---- patch 缺「覆盖范围」节：模板要求前后对照 ----
+      for (const patch of mod.patches) {
+        if (!patch.hasScopeSection) {
+          add({
+            ...base,
+            kind: 'patch-scope-missing',
+            severity: 'low',
+            title: `${where}：${patch.id} 没有「覆盖范围」节`,
+            detail: 'patch 模板要求写明目标文件 / 章节与前后对照，缺了这段读者无从定位变更。',
+            evidence: patch.file,
+            fix: '补「覆盖范围」两列表（目标文件 / 目标章节 / 原状态 / 新状态）。',
+          });
+        }
+      }
+
+      // ---- 提案目标模块可核实（仅写成路径形才核对，口头描述不编造）----
+      for (const proposal of mod.proposals) {
+        if (/已通过|已驳回/.test(proposal.status)) continue;
+        const m = /`([^`]+)`/.exec(proposal.targetModule || '');
+        if (!m || /⟨/.test(m[1])) continue;
+        const ref = m[1];
+        if (!/[/.]|spec/i.test(ref)) continue;
+        const resolved = normalizePath(proposal.file, ref);
+        const asSpecPath = normalizePath(`${mod.path}/`, ref);
+        if (!model.files.has(resolved) && !model.files.has(asSpecPath) && !model.files.has(ref)) {
+          add({
+            ...base,
+            kind: 'proposal-dangling',
+            severity: 'medium',
+            title: `${where}：${proposal.id} 目标模块无法核实`,
+            detail: `目标模块写的是 ${ref}，按提案文件位置与功能点目录都解析不到对应文件。`,
+            evidence: proposal.file,
+            fix: '改成可定位的 spec 路径（相对功能点目录或仓库根）。',
           });
         }
       }
@@ -131,6 +233,7 @@ export function deriveFindings(model, today) {
           title: `${where}：已累积 ${livePatches.length} 个补丁，达到收敛时机`,
           detail: `规范写明同一功能点补丁累积到 ${PATCH_CONVERGENCE_THRESHOLD} 个即应合入主文档，补丁文件保留作历史。`,
           evidence: mod.patches.map((p) => p.file).join('、'),
+          fix: '逐个跑 sh scripts/collar-converge.sh 合入主文档。',
         });
       }
 
@@ -146,6 +249,7 @@ export function deriveFindings(model, today) {
             title: `${where}：技术方案已 ${age} 天未更新`,
             detail: `技术方案模板的默认口径是超过 ${STALE_DAYS} 天视为待校准。`,
             evidence: `${mod.spec.file}（更新于 ${updated}）`,
+            fix: '与现状核对一次——仍准确就刷新「创建 / 更新」日期，有偏差就走 patch/proposal。',
           });
         }
       }
@@ -160,6 +264,7 @@ export function deriveFindings(model, today) {
       title: `决策记录编号重复：${id}`,
       detail: '决策只增不改，同一编号不得出现两次。',
       evidence: `docs/architecture/ADR/${id}`,
+      fix: '后写的那份改用下一个空闲编号，并在被替代者上标「已被替代」。',
     });
   }
 
@@ -172,6 +277,7 @@ export function deriveFindings(model, today) {
       title: `入口地图 ${agentsLines} 行，超过 ${AGENTS_MAX_LINES} 行上限`,
       detail: '入口地图只做导航，细节应迁到 docs/ 对应模块。',
       evidence: 'AGENTS.md',
+      fix: '把详情迁到 docs/ 对应模块，入口只留一行摘要 + 链接。',
     });
   }
 
@@ -188,6 +294,7 @@ export function deriveFindings(model, today) {
         title: `认领表指向的技术方案不存在：${claim.domain} / ${claim.module}`,
         detail: '认领表登记的 Spec 路径解析后找不到对应文件。',
         evidence: `docs/specs/README.md → ${claim.specPath}`,
+        fix: '修正认领表里的 Spec 路径，或补齐对应 spec.md。',
       });
     }
   }
@@ -208,6 +315,7 @@ export function deriveFindings(model, today) {
           title: `变更记录引用的文件不存在：${entry.date} ${entry.title}`,
           detail: `关联链接 ${link.href} 解析后找不到对应文件。`,
           evidence: `${entry.file}:${entry.line}`,
+          fix: '修正链接或补回被引用的文件。',
         });
       }
     }
@@ -236,6 +344,115 @@ export function deriveFindings(model, today) {
       title: `仍存在 ${model.stats.demoDomains.length} 个模板示范业务域`,
       detail: '示范数据混在真实业务地图里会干扰阅读，模板落地清单要求删除。',
       evidence: model.stats.demoDomains.join('、'),
+      fix: '按 README「落地清理清单」删除示范域与相关提示文字。',
+    });
+  }
+
+  // ---- 收集被截断：以下事实可能不完整 ----
+  if (model.files.truncated) {
+    add({
+      kind: 'collection-truncated',
+      severity: 'high',
+      title: '文档收集达到上限被截断，本页事实可能不完整',
+      detail: '读取文件数达到内置上限即停止，未读到的文件不会被当存在——缺口类事实可能是误报。',
+      evidence: `已读取 ${model.files.size} 个文档`,
+      fix: '目前无解（内置上限）；如遇此报请反馈给看板项目调大上限。',
+    });
+  }
+
+  // ---- S7 现状文档无会话指代词 ----
+  const deixisHits = [];
+  for (const [path, text] of model.files) {
+    if (!isDeixisChecked(path)) continue;
+    const hits = [];
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i += 1) {
+      if (DEIXIS_PATTERN.test(lines[i])) hits.push(i + 1);
+    }
+    if (hits.length) deixisHits.push({ path, hits });
+  }
+  for (const hit of deixisHits) {
+    add({
+      kind: 'session-deixis',
+      severity: 'high',
+      title: `现状文档出现会话指代词：${hit.path}`,
+      detail: '「本次新增 / 本轮 / 刚才 / 上文提到」等词绑定过去某次会话，未来读者无法解析（结构门禁 S7）。',
+      evidence: `${hit.path} 第 ${hit.hits.join('、')} 行`,
+      fix: '改为指代具体文件 / 章节 / 编号；历史叙述移进 changelog 或 ADR。',
+    });
+  }
+
+  // ---- 工具链装配状态（依据 S0 骨架清单）----
+  const toolchainMissing = [];
+  for (const [path, label] of [
+    ['scripts/collar-check.sh', '结构门禁脚本'],
+    ['scripts/collar-status.sh', '在途导航脚本'],
+    ['scripts/hooks/pre-commit', '预置 git hooks'],
+  ]) {
+    if (!model.files.has(path)) toolchainMissing.push(`${label}（${path}）`);
+  }
+  if (![...model.files.keys()].some((p) => p.startsWith('skills/'))) {
+    toolchainMissing.push('技能目录（skills/）');
+  }
+  if (toolchainMissing.length) {
+    add({
+      kind: 'toolchain-missing',
+      severity: 'info',
+      title: `工具链未完整装配：缺 ${toolchainMissing.length} 项`,
+      detail: '门禁脚本 / hooks / 技能是模板的执行体，缺失意味着提交关卡与变更操作不可用。',
+      evidence: toolchainMissing.join('、'),
+      fix: '从上游模板同步 scripts/ 与 skills/（下游仓用 sh scripts/collar-sync.sh）。',
+    });
+  }
+
+  // ---- collar-check 未见 CI 装配 ----
+  const workflows = [...model.files.keys()].filter((p) => p.startsWith('.github/workflows/'));
+  if (workflows.length) {
+    const wired = workflows.some((p) => (model.files.get(p) || '').includes('collar-check'));
+    if (!wired) {
+      add({
+        kind: 'ci-not-wired',
+        severity: 'info',
+        title: '有 CI 工作流但未发现 collar-check 装配',
+        detail: '本地 hooks 是自愿装配，CI 上门禁才拦得住未装 hooks 的提交。',
+        evidence: workflows.join('、'),
+        fix: '在 CI 里加一步跑 sh scripts/collar-check.sh。',
+      });
+    }
+  } else if (model.files.has('scripts/collar-check.sh')) {
+    add({
+      kind: 'ci-not-wired',
+      severity: 'info',
+      title: '未发现 CI 工作流（.github/workflows 为空）',
+      detail: '本地 hooks 是自愿装配，CI 上门禁才拦得住未装 hooks 的提交。',
+      evidence: 'scripts/collar-check.sh 存在',
+      fix: '建 .github/workflows 加一步跑 sh scripts/collar-check.sh。',
+    });
+  }
+
+  // ---- 无 VERSION 文件：模板版本不可考 ----
+  if (!model.files.has('VERSION')) {
+    add({
+      kind: 'version-missing',
+      severity: 'info',
+      title: '无 VERSION 文件，无法判断所基于的模板版本',
+      detail: '下游仓用 VERSION 记录基于的 collar-sdd 版本，collar-sync.sh 靠它报差异。',
+      evidence: 'VERSION（根目录）',
+      fix: '写入当前基于的模板版本号（如 1.0.0）。',
+    });
+  }
+
+  // ---- 质量门禁仍含占位符：未装配 ----
+  const gates = model.collar?.validation?.gates || [];
+  const placeholderGates = gates.filter((g) => typeof g.cmd === 'string' && g.cmd.includes('⟨'));
+  if (placeholderGates.length) {
+    add({
+      kind: 'quality-gate-placeholder',
+      severity: 'info',
+      title: `${placeholderGates.length} 个质量门禁仍是占位命令，未装配`,
+      detail: 'collar.yaml validation.gates 里 cmd 含 ⟨⟩ 的门禁不会真正执行。',
+      evidence: placeholderGates.map((g) => `${g.name}: ${g.cmd}`).join('、'),
+      fix: '按技术栈填真实命令（如 npm test / make lint），或删掉不用的门禁项。',
     });
   }
 
@@ -279,7 +496,9 @@ export function normalizePath(fromFile, href) {
 export function isVerifiablePath(path) {
   if (!path) return false;
   if (path.startsWith('docs/')) return true;
-  return path === 'AGENTS.md' || path === 'collar.yaml';
+  if (path.startsWith('scripts/collar-')) return true;
+  if (path.startsWith('skills/')) return true;
+  return ['AGENTS.md', 'collar.yaml', 'VERSION', 'README.md', 'README.en.md'].includes(path);
 }
 
 export const _internal = {

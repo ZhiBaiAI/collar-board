@@ -9,7 +9,7 @@ import { parseDecisions } from './decisions.js';
 import { parseTimeline } from './timeline.js';
 import { parseBlueprints } from './blueprints.js';
 import { parseCollar } from './yaml.js';
-import { deriveFindings } from './findings.js';
+import { deriveFindings, daysBetween, CONVERGE_OBSERVE_DAYS } from './findings.js';
 
 // 模板落地清单要求删除的示范业务域
 const DEMO_DOMAIN_PATTERN = /^0[01]_\[业务地图\]/;
@@ -86,6 +86,39 @@ export function buildModel(files, { today = new Date().toISOString().slice(0, 10
     totalFiles: files.size,
   };
 
+  // 在途概览（collar-status.sh 同口径）：未收敛 patch / 待审阅提案 / 在途 sunset
+  const inflight = { patches: [], proposals: [], sunsets: [] };
+  for (const domain of domains) {
+    for (const mod of domain.modules) {
+      for (const patch of mod.patches) {
+        if (/已收敛|已废弃/.test(patch.status)) continue;
+        const age = patch.effectiveDate && /^\d{4}-\d{2}-\d{2}$/.test(patch.effectiveDate)
+          ? daysBetween(patch.effectiveDate, today)
+          : null;
+        inflight.patches.push({
+          domain: domain.name,
+          module: mod.name,
+          path: mod.path,
+          patch,
+          age,
+          overdue: age !== null && age >= CONVERGE_OBSERVE_DAYS,
+        });
+      }
+      for (const proposal of mod.proposals) {
+        if (/已通过|已驳回/.test(proposal.status)) continue;
+        inflight.proposals.push({ domain: domain.name, module: mod.name, path: mod.path, proposal });
+      }
+      for (const sunset of mod.sunsets) {
+        // 归档完成判据同 collar-status.sh：状态含「已归档」，
+        // 或「启动 / 归档」字段的归档日期是真实日期（非 ⟨⟩）
+        const text = files.get(sunset.file) || '';
+        if (/已归档/.test(text)) continue;
+        if (sunset.archiveDate && /^\d{4}-\d{2}-\d{2}$/.test(sunset.archiveDate)) continue;
+        inflight.sunsets.push({ domain: domain.name, module: mod.name, path: mod.path, sunset });
+      }
+    }
+  }
+
   const model = {
     generatedAt: new Date().toISOString(),
     today,
@@ -95,6 +128,7 @@ export function buildModel(files, { today = new Date().toISOString().slice(0, 10
     decisions,
     timeline,
     blueprints,
+    inflight,
     stats,
     files,
   };
