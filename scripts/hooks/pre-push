@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+# collar pre-push — 合并前最后一次把关：结构门禁复跑 + ⑤⑥⑦ 协议项提醒
+#
+# ⑤ spec 差异检测 / ⑥ 入口地图守卫 / ⑦ 上下文缝补 是 Agent 协议执行项，
+# 脚本无法机械判定，只能提醒留痕；结构门禁可机械判定，直接复跑拦截。
+
+set -u
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+cd "$ROOT" || exit 1
+
+sh scripts/collar-check.sh || exit 1
+
+echo
+echo "pre-push 协议项自查（commit-checklist ⑤⑥⑦）："
+echo "  ⑤ spec 差异清单已输出且未决项已有结论"
+echo "  ⑥ AGENTS.md 行数与现在时态"
+echo "  ⑦ 外置逻辑已缝补（MCP 通道 / //! 锚点 / ADR 登记）"
+exit 0

@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+# collar post-commit — 提交关卡 ③④ 提醒：知识沉淀不阻塞提交，但不许忘记
+#
+# 本次提交触及 specs/src 时提醒完成 commit-checklist ③④：
+# changelog 记「做了什么」+ runbook 抽「学到了什么」。
+# post-commit 无法拦截，提醒是协议执行的一部分（硬指令 + 留痕 + 月度审计）。
+
+set -u
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+cd "$ROOT" || exit 0
+
+CHANGED=$(git -c core.quotePath=false diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null || true)
+[ -n "$CHANGED" ] || exit 0
+
+if printf '%s\n' "$CHANGED" | grep -q '^docs/specs/\|^src/\|^scripts/'; then
+  echo
+  echo "post-commit: 本次提交触及 specs/src/scripts ——"
+  echo "  ③ changelog：docs/changelog/$(date +%Y)/$(date +%Y-%m).md 是否已同次提交？"
+  echo "  ④ runbook：踩了新坑/立了新约定 → conventions.md / troubleshooting.md"
+  echo "  未做的请补进下一次提交（「一次提交 = 四件事同时发生」）"
+fi
+exit 0

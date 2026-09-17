@@ -30,6 +30,70 @@ export function parseAcChecklist(sectionText) {
 }
 
 /**
+ * patch §⑥ Delta 四段（结构门禁 S5 的同一格式）：
+ *   ### ADDED    - [ ] `AC-PNNN-N` 新增标准
+ *   ### MODIFIED - [ ] `AC-N` 替代主文档的新文本
+ *   ### REMOVED  - `AC-N` 作废原因
+ *   ### RENAMED  - FROM: `AC-旧` 紧跟 - TO: `AC-PNNN-N`
+ * 早期模板是平铺清单、没有 ### 小节——四段全空时视为旧格式，
+ * 由调用方退回 parseAcChecklist 兼容。
+ */
+export function parseDelta(sectionText) {
+  const delta = { added: [], modified: [], removed: [], renamed: [] };
+  let sec = '';
+  let pendingFrom = null;
+  const itemRe = /^\s*-\s*(\[[ xX]\]\s*)?`(AC-(?:P\d{3}-)?\d+)`\s*(.*)$/;
+  for (const line of sectionText.split('\n')) {
+    const h = /^###\s+(.+?)\s*$/.exec(line);
+    if (h) {
+      const name = h[1].toUpperCase();
+      if (name.startsWith('ADD')) sec = 'added';
+      else if (name.startsWith('MODI')) sec = 'modified';
+      else if (name.startsWith('REMO')) sec = 'removed';
+      else if (name.startsWith('RENA')) sec = 'renamed';
+      else sec = '';
+      pendingFrom = null;
+      continue;
+    }
+    // 更高级别标题（## / #）结束 delta 段（sectionBody 一般会先截断，这里兜底）
+    if (/^#{1,2}(?!#)/.test(line)) {
+      sec = '';
+      pendingFrom = null;
+      continue;
+    }
+    if (sec === 'renamed') {
+      const from = /^\s*-\s*FROM:\s*`(AC-(?:P\d{3}-)?\d+)`/.exec(line);
+      if (from) { pendingFrom = from[1]; continue; }
+      const to = /^\s*-\s*TO:\s*`(AC-(?:P\d{3}-)?\d+)`/.exec(line);
+      if (to) {
+        delta.renamed.push({ from: pendingFrom || '', to: to[1] });
+        pendingFrom = null;
+        continue;
+      }
+    }
+    if (!sec || sec === 'renamed') continue;
+    const m = itemRe.exec(line);
+    if (m) delta[sec].push({ id: m[2], text: m[3].trim() });
+  }
+  return delta;
+}
+
+export function deltaIsEmpty(delta) {
+  return !delta.added.length && !delta.modified.length && !delta.removed.length && !delta.renamed.length;
+}
+
+/** 实施任务清单：feature §8 `- [ ] `T-N`` / patch §⑦ `- [ ] `T-PNNN-N``。 */
+export function parseTaskChecklist(sectionText) {
+  const out = [];
+  const re = /^\s*-\s*\[([ xX])\]\s*`?(T-(?:P\d{3}-)?\d+)`?\s*(.*)$/;
+  for (const line of sectionText.split('\n')) {
+    const m = re.exec(line);
+    if (m) out.push({ id: m[2], done: m[1].toLowerCase() === 'x', text: m[3].trim() });
+  }
+  return out;
+}
+
+/**
  * 对齐校验：spec 声明的 AC 与 tests/patch 回指的 AC 互相覆盖。
  * 返回四类结果，语义与仓库结构门禁 S3 一致，并补充 patch 侧的同类检查。
  */

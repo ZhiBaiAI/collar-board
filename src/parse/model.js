@@ -52,6 +52,7 @@ export function buildModel(files, { today = new Date().toISOString().slice(0, 10
   const tests = modules.map((m) => m.tests).filter(Boolean);
   const patches = modules.flatMap((m) => m.patches);
   const sunsets = modules.flatMap((m) => m.sunsets);
+  const proposals = modules.flatMap((m) => m.proposals || []);
 
   const statusCounts = {};
   for (const spec of specs) {
@@ -66,6 +67,7 @@ export function buildModel(files, { today = new Date().toISOString().slice(0, 10
     tests: tests.length,
     patches: patches.length,
     sunsets: sunsets.length,
+    proposals: proposals.length,
     adrs: decisions.adrs.length,
     principles: decisions.principles.length,
     blueprints: blueprints.length,
@@ -75,6 +77,8 @@ export function buildModel(files, { today = new Date().toISOString().slice(0, 10
     acceptanceCriteria: specs.reduce((sum, s) => sum + s.acs.length, 0),
     gaps: tests.reduce((sum, t) => sum + t.gaps.length, 0),
     agentsLines,
+    // 下游项目基于的模板版本（根目录 VERSION 文件，缺省为 null）
+    templateVersion: (files.get('VERSION') || '').trim() || null,
     placeholders,
     placeholderFiles,
     demoDomains,
