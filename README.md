@@ -39,15 +39,16 @@ Firefox 官方立场是反对，Safari 完全不支持。
 
 看板全程只申请只读权限。
 
-## 五个视图
+## 六个视图
 
 | 视图 | 回答什么 | 数据来源 |
 |---|---|---|
 | 总览 | 项目是什么、边界在哪、有哪些待办 | `collar.yaml`、各模块汇总 |
 | 业务地图 | 有哪些业务域与功能点，各自什么状态 | `docs/specs/**/spec.md` |
+| 在途变更 | 哪些补丁未收敛、提案待审、日落在途、结构缺口——以及各自下一步 | `docs/specs/**`（同 `collar-status.sh` 口径） |
 | 决策脉络 | 做过哪些架构决策、各自何时该复审 | `docs/architecture/ADR/`、`principles/`、`docs/wiki/blue-print/` |
 | 变更时间线 | 什么时候改了什么、哪些有破坏性 | `docs/changelog/YYYY/YYYY-MM.md` |
-| 结构事实 | 哪些地方不符合规范、依据是什么 | 全部文档的交叉核对 |
+| 结构事实 | 哪些地方不符合规范、依据是什么、怎么修 | 全部文档的交叉核对 |
 
 点击任意功能点或决策卡片，会从右侧滑出明细：验收标准、测试点、补丁、日落记录等。
 
@@ -60,15 +61,22 @@ Firefox 官方立场是反对，Safari 完全不支持。
 | 每个技术方案都有伴生测试文档 | 结构门禁 S2；`docs/specs/README.md` |
 | 验收标准与测试点双向对齐 | 结构门禁 S3；约定 C-005 |
 | 补丁与主文档的双向指针 | 结构门禁 S5；`docs/specs/README.md`「关键规格一」 |
+| delta 四段结构一致性（七类） | 结构门禁 S5（与 `collar-check.sh` 同口径） |
+| 现状文档无会话指代词 | 结构门禁 S7 |
+| 「已验证」要求实施任务全勾 | feature / patch 模板实施任务节 |
+| 工具链装配（scripts / hooks / skills / CI） | 结构门禁 S0；`commit-gate.md` |
+| 模板版本（VERSION）与质量门禁占位符 | `collar-sync.sh` 版本机制；`collar.yaml` |
+| 收集被截断时显式声明 | 看板「不编造」原则 |
 | 补丁累积到阈值应收敛 | `docs/specs/README.md`「patch 的收敛」（3 个） |
 | 技术方案超过 90 天未更新 | feature 模板「创建 / 更新」字段口径 |
 | 决策记录编号唯一 | 结构门禁 S4 |
 | 入口地图不超过 120 行 | 结构门禁 S1；`AGENTS.md` |
 | 认领表与变更记录引用的文件存在 | `docs/specs/README.md`、`docs/changelog/README.md` |
 
-看板只读知识库（`docs/`、`AGENTS.md`、`collar.yaml`），不读源码树。
-因此指向 `src/`、`scripts/` 等处的链接不做存在性核对——
-看不到的东西不能报「不存在」，那是编造。
+看板只读知识库与装配件（`docs/`、`skills/`、`scripts/collar-*`、`scripts/hooks/`、
+`.github/workflows/`、`AGENTS.md`、`collar.yaml`、`VERSION`、`README*`），不读源码树。
+指向 `src/` 等未读目录的链接不做存在性核对——
+看不到的东西不能报「不存在」，那是编造。读取文件数达上限被截断时会显式声明。
 
 ## 项目结构
 
@@ -95,7 +103,7 @@ collar-board/
 │       ├── app.js            #   装配、交互、抽屉
 │       ├── format.js         #   格式化与转义
 │       ├── styles.css
-│       └── views/            #   五个视图
+│       └── views/            #   六个视图
 └── test/                     # 测试
 ```
 

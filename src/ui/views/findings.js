@@ -34,6 +34,66 @@ const RULE_SOURCES = [
     source: '结构门禁 S5；docs/specs/README.md「关键规格一」',
   },
   {
+    kind: 'delta-ref-dangling',
+    rule: 'delta 引用主文档的编号必须真实存在',
+    source: '结构门禁 S5',
+  },
+  {
+    kind: 'delta-issue',
+    rule: 'delta 结构七类核对：块内重复 / 跨块冲突 / FROM-TO 配对 / TO 用 AC-PNNN-N / 段外孤儿行 / 标题拼错 / TO 撞已存编号',
+    source: '结构门禁 S5',
+  },
+  {
+    kind: 'session-deixis',
+    rule: '现状文档禁用「本次新增 / 本轮 / 刚才 / 上文提到」等会话指代词',
+    source: '结构门禁 S7',
+  },
+  {
+    kind: 'collection-truncated',
+    rule: '文件收集被截断时事实可能不完整，必须显式声明',
+    source: '看板「不编造」原则',
+  },
+  {
+    kind: 'patch-scope-missing',
+    rule: 'patch 必须有「覆盖范围」节写明前后对照',
+    source: '_templates/patch.md',
+  },
+  {
+    kind: 'premature-verified',
+    rule: '实施任务全勾 + 差异清单无未决才允许标「已验证」',
+    source: 'feature / patch 模板实施任务节',
+  },
+  {
+    kind: 'spec-owner-missing',
+    rule: '每个功能点必须有明确负责人',
+    source: 'docs/specs/README.md「认领表」；collar-status.sh',
+  },
+  {
+    kind: 'proposal-dangling',
+    rule: '提案目标模块应可定位到具体 spec',
+    source: '_templates/proposal.md',
+  },
+  {
+    kind: 'toolchain-missing',
+    rule: '门禁脚本 / hooks / 技能随模板装配',
+    source: '结构门禁 S0 骨架清单',
+  },
+  {
+    kind: 'ci-not-wired',
+    rule: '结构门禁应在 CI 上执行，不只靠本地 hooks',
+    source: 'commit-gate.md；collar-check.yml',
+  },
+  {
+    kind: 'version-missing',
+    rule: '下游仓用 VERSION 记录基于的模板版本',
+    source: 'collar-sync.sh 版本机制',
+  },
+  {
+    kind: 'quality-gate-placeholder',
+    rule: 'collar.yaml 质量门禁的 ⟨⟩ 命令要替换成真实命令',
+    source: 'collar.yaml validation.gates',
+  },
+  {
     kind: 'patch-convergence',
     rule: '同一功能点补丁累积达阈值应合入主文档',
     source: 'docs/specs/README.md「patch 的收敛」',
@@ -92,6 +152,7 @@ export function renderFindings(model) {
           <div class="ftitle">${escapeHtml(f.title)}</div>
           <div class="fdetail">${escapeHtml(f.detail)}</div>
           <div class="fev">${escapeHtml(f.evidence)}</div>
+          ${f.fix ? `<div class="hint">修法：${escapeHtml(f.fix)}</div>` : ''}
         </div>
       </div>`,
         )

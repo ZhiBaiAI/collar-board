@@ -82,6 +82,109 @@ export function deltaIsEmpty(delta) {
   return !delta.added.length && !delta.modified.length && !delta.removed.length && !delta.renamed.length;
 }
 
+/**
+ * Delta 一致性核对——与结构门禁 S5 同口径的七类机械检查：
+ *   小节内重复编号 / 跨小节同编号 / FROM-TO 不配对 / TO 非 AC-PNNN-N /
+ *   段外孤儿行 / 疑似拼错的小节标题 / RENAMED TO 撞主文档编号（由调用方核对）。
+ * 返回 { issues, checkIds, toIds }：
+ *   issues   结构错误描述（逐条即事实，不经评分）
+ *   checkIds delta 引用主文档已有 AC 的编号（MODIFIED/REMOVED/FROM）
+ *   toIds    RENAMED TO 的新编号（调用方须核对不得已存在于主文档）
+ */
+export function parseDeltaIssues(sectionText) {
+  const issues = [];
+  const checkIds = [];
+  const toIds = [];
+  const cnt = new Map(); // `${sec}|${ac}` → n
+  const seclist = new Map(); // ac → 出现过的小节列表
+  let sec = '';
+  let pend = '';
+
+  const mark = (ac, s) => {
+    const key = `${s}|${ac}`;
+    const n = (cnt.get(key) || 0) + 1;
+    cnt.set(key, n);
+    if (n > 1) issues.push(`\`${ac}\` 在 ${s} 小节内重复——同一编号只留一条`);
+    if (!seclist.has(ac)) seclist.set(ac, []);
+    if (!seclist.get(ac).includes(s)) seclist.get(ac).push(s);
+  };
+
+  const flushPend = () => {
+    if (sec === 'RENAMED' && pend) {
+      issues.push(`### RENAMED 里 FROM: \`${pend}\` 没有配对的 TO:（每条 FROM: 紧跟一条 TO:）`);
+      pend = '';
+    }
+  };
+
+  for (const raw of sectionText.split('\n')) {
+    const line = raw.trimEnd();
+    const h3 = /^###\s+(.+?)\s*$/.exec(line);
+    if (h3) {
+      flushPend();
+      const hdr = h3[1];
+      if (['ADDED', 'MODIFIED', 'REMOVED', 'RENAMED'].includes(hdr)) {
+        sec = hdr;
+      } else {
+        sec = '';
+        if (/^(ADD|MODI|REMO|RENA)/.test(hdr.toUpperCase())) {
+          issues.push(
+            `小节标题「### ${hdr}」疑似拼错——delta 小节只认 ADDED/MODIFIED/REMOVED/RENAMED（若非笔误请改标题或层级）`,
+          );
+        }
+      }
+      continue;
+    }
+    if (/^#{1,2}\s/.test(line)) {
+      flushPend();
+      sec = '';
+      continue;
+    }
+
+    const from = /^\s*-\s*FROM:\s*`(AC-[A-Za-z0-9-]+)`/.exec(line);
+    const to = /^\s*-\s*TO:\s*`(AC-[A-Za-z0-9-]+)`/.exec(line);
+    const item = /^\s*-\s*(\[[ xX]\]\s*)?`(AC-[A-Za-z0-9-]+)`/.exec(line);
+
+    if (sec === 'RENAMED' && from) {
+      if (pend) issues.push(`### RENAMED 里 FROM: \`${pend}\` 没有配对的 TO:（每条 FROM: 紧跟一条 TO:）`);
+      pend = from[1];
+      mark(pend, 'RENAMED(FROM)');
+      checkIds.push(pend);
+      continue;
+    }
+    if (sec === 'RENAMED' && to) {
+      if (!pend) issues.push(`### RENAMED 里 TO: \`${to[1]}\` 没有配对的 FROM:`);
+      else pend = '';
+      if (!/^AC-P\d+-\d+$/.test(to[1])) {
+        issues.push(`RENAMED TO 的 \`${to[1]}\` 必须是 AC-PNNN-N 形编号——普通 AC-N 会撞主文档编号体系并触发 S3 悬空引用`);
+      }
+      mark(to[1], 'RENAMED(TO)');
+      toIds.push(to[1]);
+      continue;
+    }
+    if (sec && sec !== 'RENAMED' && item) {
+      mark(item[2], sec);
+      if (sec !== 'ADDED') checkIds.push(item[2]);
+      continue;
+    }
+    if (!sec && item) {
+      issues.push(`AC 条目不在 delta 小节内会被收敛忽略：${line.trim()}（移进对应 ### 小节）`);
+      continue;
+    }
+    if (!sec && (from || to)) {
+      issues.push(`FROM:/TO: 行不在 ### RENAMED 小节内会被忽略：${line.trim()}`);
+    }
+  }
+
+  flushPend();
+  for (const [ac, secs] of seclist) {
+    if (secs.length > 1) {
+      issues.push(`编号 \`${ac}\` 跨多个 delta 小节出现（${secs.join('|')}）——一个 AC 只能属于一种操作`);
+    }
+  }
+
+  return { issues, checkIds, toIds };
+}
+
 /** 实施任务清单：feature §8 `- [ ] `T-N`` / patch §⑦ `- [ ] `T-PNNN-N``。 */
 export function parseTaskChecklist(sectionText) {
   const out = [];

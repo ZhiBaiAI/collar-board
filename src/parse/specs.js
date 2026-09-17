@@ -17,6 +17,7 @@ import {
   extractAcTokens,
   parseAcChecklist,
   parseDelta,
+  parseDeltaIssues,
   parseTaskChecklist,
 } from './ac.js';
 
@@ -96,10 +97,13 @@ function parsePatch(path, text, files) {
         ...delta.renamed.map((r) => ({ id: r.to, text: '', kind: 'renamed' })),
       ]
     : parseAcChecklist(acSection);
-  // 对主文档已有 AC 的引用（MODIFIED/REMOVED/FROM）——必须真实存在（结构门禁 S5）
+
+  // 对主文档已有 AC 的引用（MODIFIED/REMOVED/FROM）——必须真实存在（结构门禁 S5）；
+  // deltaChecks 带 S5 同口径的七类结构错误与 RENAMED TO 新编号
   const refAcs = hasDelta
     ? [...delta.modified.map((a) => a.id), ...delta.removed.map((a) => a.id), ...delta.renamed.map((r) => r.from)]
     : [];
+  const deltaChecks = hasDelta ? parseDeltaIssues(acSection) : { issues: [], checkIds: [], toIds: [] };
 
   const taskSection = sectionBody(masked, headingIncludes('实施任务'));
 
@@ -124,6 +128,8 @@ function parsePatch(path, text, files) {
     acs,
     delta: hasDelta ? delta : null,
     refAcs,
+    deltaIssues: deltaChecks.issues,
+    deltaToIds: deltaChecks.toIds,
     tasks: parseTaskChecklist(taskSection),
     hasScopeSection: scope.includes('覆盖范围') && scope.length > 0,
     placeholders: countPlaceholders(text),
@@ -256,6 +262,14 @@ export function parseSpecs(files) {
   const domains = collectSpecTree(files);
   const out = [];
 
+  // 先按目录把文件分桶一次，避免每个模块都全扫一遍文件表
+  const byDir = new Map();
+  for (const [path, text] of files) {
+    const dir = dirname(path);
+    if (!byDir.has(dir)) byDir.set(dir, []);
+    byDir.get(dir).push([path, text]);
+  }
+
   for (const domain of domains.values()) {
     const modules = [];
     for (const mod of domain.modules.values()) {
@@ -267,8 +281,7 @@ export function parseSpecs(files) {
       const patches = [];
       const sunsets = [];
       const proposals = [];
-      for (const [path, text] of files) {
-        if (dirname(path) !== mod.path) continue;
+      for (const [path, text] of byDir.get(mod.path) || []) {
         const base = basename(path);
         if (/^PATCH-\d{3}-/.test(base)) patches.push(parsePatch(path, text, files));
         else if (/^SUNSET-\d{3}-/.test(base)) sunsets.push(parseSunset(path, text));
@@ -301,6 +314,15 @@ export function parseSpecs(files) {
         ? [...new Set(patches.flatMap((p) => p.refAcs).filter((ac) => ac && !specAcSet.has(ac)))]
         : [];
 
+      // RENAMED TO 的新编号不得已存在于主文档（S5 NEW 检查）
+      for (const p of patches) {
+        for (const id of p.deltaToIds) {
+          if (specAcSet.has(id)) {
+            p.deltaIssues.push(`RENAMED TO 的 \`${id}\` 在主文档已存在——TO 必须换新编号（通常用 AC-PNNN-N）`);
+          }
+        }
+      }
+
       const alignment = spec
         ? {
             ...alignAc({
@@ -329,10 +351,11 @@ export function parseSpecs(files) {
         alignment,
         // 主文档里指向本模块 patch 的反向指针（「已被 … PATCH-NNN …取代」）。
         // 已收敛/已废弃的 patch 指针随收敛移除，缺指针是正确状态，不查。
+        // 用 mask 后的正文核对——代码围栏里的「已被…取代」字样不算指针。
         reversePointers: spec
           ? patches.filter((p) => !/已收敛|已废弃/.test(p.status)).map((p) => ({
               patchId: p.id,
-              present: new RegExp(`已被[^\\n]*${p.id}`).test(specText),
+              present: new RegExp(`已被[^\\n]*${p.id}`).test(maskFences(specText)),
             }))
           : [],
       });
