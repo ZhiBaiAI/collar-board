@@ -94,13 +94,41 @@ export function deriveFindings(model, today) {
         }
       }
 
-      // ---- patch 收敛（依据 specs/README.md 的收敛时机）----
-      if (mod.patches.length >= PATCH_CONVERGENCE_THRESHOLD) {
+      // ---- delta 对主文档 AC 的引用必须存在（依据 collar-check.sh S5）----
+      for (const ac of mod.alignment.danglingDeltaRefs || []) {
+        add({
+          ...base,
+          kind: 'delta-ref-dangling',
+          severity: 'high',
+          title: `${where}：补丁 delta 引用了不存在的 ${ac}`,
+          detail: 'MODIFIED / REMOVED / RENAMED(FROM) 的编号必须在主文档验收标准里真实存在。',
+          evidence: mod.path,
+        });
+      }
+
+      // ---- 「已验证」要求任务全勾（依据 patch 模板 ⑦ 节口径）----
+      for (const patch of mod.patches) {
+        const undone = patch.tasks.filter((t) => !t.done);
+        if (/已验证/.test(patch.status) && patch.tasks.length && undone.length) {
+          add({
+            ...base,
+            kind: 'premature-verified',
+            severity: 'medium',
+            title: `${where}：${patch.id} 标了「已验证」但还有 ${undone.length} 项任务未勾`,
+            detail: '模板规定实施任务全部勾选且差异清单无未决项才允许标「已验证」。',
+            evidence: patch.file,
+          });
+        }
+      }
+
+      // 已收敛 / 已废弃的 patch 是历史状态，不再占用收敛计数
+      const livePatches = mod.patches.filter((p) => !/已收敛|已废弃/.test(p.status));
+      if (livePatches.length >= PATCH_CONVERGENCE_THRESHOLD) {
         add({
           ...base,
           kind: 'patch-convergence',
           severity: 'medium',
-          title: `${where}：已累积 ${mod.patches.length} 个补丁，达到收敛时机`,
+          title: `${where}：已累积 ${livePatches.length} 个补丁，达到收敛时机`,
           detail: `规范写明同一功能点补丁累积到 ${PATCH_CONVERGENCE_THRESHOLD} 个即应合入主文档，补丁文件保留作历史。`,
           evidence: mod.patches.map((p) => p.file).join('、'),
         });

@@ -3,6 +3,9 @@
 读取遵循 [Collar SDD](../collar-sdd) 规范的项目，把知识库文档渲染成可视化看板。
 **只读**——不修改被查看项目的任何文件。
 
+本仓库自身也是 collar-sdd 的下游项目：知识库骨架见 [AGENTS.md](AGENTS.md)，
+模板升级走 `sh scripts/collar-sync.sh`，版本见根目录 `VERSION`。
+
 ## 为什么做这个
 
 规范把项目知识结构化写进了仓库（业务地图、决策记录、变更时间线、测试文档），

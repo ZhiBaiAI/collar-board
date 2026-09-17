@@ -57,11 +57,11 @@ export function relativeDays(isoDate, today) {
 
 export function statusTone(status) {
   const s = String(status || '');
-  if (/已上线|生效|accepted|已合并|已通过/.test(s)) return 'ok';
-  if (/开发中|评审中|讨论稿|调研|proposed|待审阅/.test(s)) return 'progress';
+  if (/已上线|生效|accepted|已合并|已通过|已验证/.test(s)) return 'ok';
+  if (/开发中|实施中|评审中|讨论稿|调研|proposed|待审阅/.test(s)) return 'progress';
   if (/草稿|待定/.test(s)) return 'draft';
   if (/日落|已下线|已废弃|deprecated|已驳回|rejected/.test(s)) return 'retired';
-  if (/superseded/.test(s)) return 'superseded';
+  if (/superseded|已收敛/.test(s)) return 'superseded';
   return 'neutral';
 }
 

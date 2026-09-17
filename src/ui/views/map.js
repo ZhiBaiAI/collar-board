@@ -9,13 +9,17 @@ function moduleCard(domain, mod) {
   const acCount = (spec?.acs.length || 0) + mod.patches.reduce((n, p) => n + p.acs.length, 0);
   const tcCount = mod.tests ? mod.tests.testCases.length : 0;
   const gapCount =
-    mod.alignment.uncoveredMain.length + mod.alignment.uncoveredPatch.length + mod.alignment.danglingMain.length;
+    mod.alignment.uncoveredMain.length +
+    mod.alignment.uncoveredPatch.length +
+    mod.alignment.danglingMain.length +
+    (mod.alignment.danglingDeltaRefs || []).length;
 
   const flags = [];
   if (!spec) flags.push('<span class="badge danger">缺技术方案</span>');
   if (spec && !mod.tests) flags.push('<span class="badge danger">缺测试文档</span>');
   if (gapCount > 0) flags.push(`<span class="badge danger">${gapCount} 项未对齐</span>`);
   if (mod.patches.length) flags.push(`<span class="badge patch">${mod.patches.length} 个补丁</span>`);
+  if (mod.proposals?.length) flags.push(`<span class="badge progress">${mod.proposals.length} 个提案</span>`);
   if (mod.sunsets.length) flags.push(`<span class="badge retired">${mod.sunsets.length} 项日落</span>`);
   if (spec && !gapCount && mod.tests) flags.push('<span class="badge ok">验收已对齐</span>');
 
@@ -87,12 +91,19 @@ export function renderModuleDetail(model, modulePath) {
   const acRows = [];
   if (spec) {
     for (const ac of spec.acs) {
-      acRows.push({ id: ac.id, text: ac.text, from: '技术方案' });
+      acRows.push({ id: ac.id, text: ac.text, op: '', from: '技术方案' });
     }
   }
   for (const patch of mod.patches) {
-    for (const ac of patch.acs) {
-      acRows.push({ id: ac.id, text: ac.text, from: patch.id });
+    if (patch.delta) {
+      for (const a of patch.delta.added) acRows.push({ id: a.id, text: a.text, op: '新增', from: patch.id });
+      for (const a of patch.delta.modified) acRows.push({ id: a.id, text: a.text, op: '修改', from: patch.id });
+      for (const r of patch.delta.renamed) acRows.push({ id: r.to, text: `改编号自 ${r.from}`, op: '改名', from: patch.id });
+      for (const a of patch.delta.removed) acRows.push({ id: a.id, text: a.text, op: '作废', from: patch.id, dead: true });
+    } else {
+      for (const ac of patch.acs) {
+        acRows.push({ id: ac.id, text: ac.text, op: '', from: patch.id });
+      }
     }
   }
 
@@ -105,18 +116,21 @@ export function renderModuleDetail(model, modulePath) {
 
   const acTable = acRows.length
     ? `<div class="table-wrap"><table class="data">
-        <thead><tr><th>编号</th><th>验收标准</th><th>来源</th><th>测试点</th></tr></thead>
+        <thead><tr><th>编号</th><th>验收标准</th><th>变更</th><th>来源</th><th>测试点</th></tr></thead>
         <tbody>
           ${acRows
             .map(
               (ac) => `<tr>
                 <td class="mono">${escapeHtml(ac.id)}</td>
                 <td>${content(ac.text)}</td>
+                <td>${ac.op ? `<span class="badge ${ac.dead ? 'retired' : 'patch'}">${escapeHtml(ac.op)}</span>` : ''}</td>
                 <td class="mono">${escapeHtml(ac.from)}</td>
                 <td>${
-                  testRefs.has(ac.id)
-                    ? '<span class="badge ok">已覆盖</span>'
-                    : '<span class="badge danger">无测试点</span>'
+                  ac.dead
+                    ? '<span class="badge retired">作废</span>'
+                    : testRefs.has(ac.id)
+                      ? '<span class="badge ok">已覆盖</span>'
+                      : '<span class="badge danger">无测试点</span>'
                 }</td>
               </tr>`,
             )
@@ -157,6 +171,37 @@ export function renderModuleDetail(model, modulePath) {
         )
         .join('')}</ul>`
     : '<div class="hint">没有补丁记录。</div>';
+
+  const taskRows = [
+    ...(spec?.tasks || []).map((t) => ({ ...t, src: '技术方案' })),
+    ...mod.patches.flatMap((p) => p.tasks.map((t) => ({ ...t, src: p.id }))),
+  ];
+  const taskDone = taskRows.filter((t) => t.done).length;
+  const taskList = taskRows.length
+    ? `<div class="hint">完成 ${taskDone} / ${taskRows.length}</div>
+       <ul class="plain-list">${taskRows
+         .map(
+           (t) => `<li>
+             ${t.done ? '<span class="badge ok">✓</span>' : '<span class="badge draft"> </span>'}
+             <span class="mono">${escapeHtml(t.id)}</span> ${content(t.text)}
+             <span class="hint">${escapeHtml(t.src)}</span>
+           </li>`,
+         )
+         .join('')}</ul>`
+    : '<div class="hint">未列出实施任务。</div>';
+
+  const proposalList = (mod.proposals || []).length
+    ? `<ul class="plain-list">${mod.proposals
+        .map(
+          (p) => `<li>
+            <span class="mono">${escapeHtml(p.id)}</span>
+            ${escapeHtml(p.title.replace(/^PROPOSAL-\d+\s*[:：—–-]\s*/, ''))}
+            ${p.status ? `<span class="badge ${statusTone(p.status)}">${escapeHtml(p.status)}</span>` : ''}
+            <div class="hint" style="margin:3px 0 0">提案人：${dash(p.proposer)}　目标：${dash(p.targetModule)}</div>
+          </li>`,
+        )
+        .join('')}</ul>`
+    : '<div class="hint">没有提案记录。</div>';
 
   const sunsetList = mod.sunsets.length
     ? `<ul class="plain-list">${mod.sunsets
@@ -214,6 +259,12 @@ export function renderModuleDetail(model, modulePath) {
       <h4>补丁</h4>
       ${patchList}
 
+      <h4>实施任务</h4>
+      ${taskList}
+
+      <h4>提案</h4>
+      ${proposalList}
+
       <h4>日落记录</h4>
       ${sunsetList}
 
@@ -222,6 +273,7 @@ export function renderModuleDetail(model, modulePath) {
         ${spec ? `<li>${escapeHtml(spec.file)}</li>` : ''}
         ${mod.tests ? `<li>${escapeHtml(mod.tests.file)}</li>` : ''}
         ${mod.patches.map((p) => `<li>${escapeHtml(p.file)}</li>`).join('')}
+        ${(mod.proposals || []).map((p) => `<li>${escapeHtml(p.file)}</li>`).join('')}
         ${mod.sunsets.map((s) => `<li>${escapeHtml(s.file)}</li>`).join('')}
       </ul>`,
   };

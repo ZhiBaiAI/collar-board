@@ -28,9 +28,11 @@ export async function readRepo(root) {
         continue;
       }
       const rel = relative(root, full);
-      const wanted = rel.startsWith('docs/') || rel === 'AGENTS.md' || rel === 'collar.yaml';
+      // 与浏览器端 collect.js 保持一致：docs/ + AGENTS.md + collar.yaml + VERSION
+      const wanted =
+        rel.startsWith('docs/') || rel === 'AGENTS.md' || rel === 'collar.yaml' || rel === 'VERSION';
       if (!wanted) continue;
-      if (!/\.(md|ya?ml)$/i.test(entry.name)) continue;
+      if (entry.name !== 'VERSION' && !/\.(md|ya?ml)$/i.test(entry.name)) continue;
       files.set(rel, await readFile(full, 'utf8'));
     }
   }

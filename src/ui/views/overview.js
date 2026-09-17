@@ -58,7 +58,8 @@ export function renderOverview(model) {
       const gaps =
         mod.alignment.uncoveredMain.length +
         mod.alignment.uncoveredPatch.length +
-        mod.alignment.danglingMain.length;
+        mod.alignment.danglingMain.length +
+        (mod.alignment.danglingDeltaRefs || []).length;
       coverageRows.push({
         domain: domain.name,
         module: mod.name,
@@ -187,6 +188,7 @@ export function renderOverview(model) {
           <dt>入口地图</dt><dd class="mono">${dash(identity.entry)}</dd>
           <dt>知识库</dt><dd class="mono">${dash(identity.knowledgeBase)}</dd>
           <dt>默认策略</dt><dd>${dash(boundary.default)}</dd>
+          <dt>模板版本</dt><dd class="mono">${dash(stats.templateVersion)}</dd>
         </dl>
         ${
           identity.mustRead?.length

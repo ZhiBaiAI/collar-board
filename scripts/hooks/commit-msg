@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+# collar commit-msg — 规范 commit message 首行，便于 collar-changelog 提取
+#
+# 要求：`<类型>(<范围>): <一句话说明>`
+# 豁免：WIP/wip 开头不检查（WIP 是关卡允许的绕过场景之一）
+# 提醒：message 末尾未附 commit-checklist 勾选结果时打印 hint（不拦截）
+
+set -u
+MSG="${1:-}"
+[ -f "$MSG" ] || exit 0
+
+HEADLINE=$(head -1 "$MSG")
+case "$HEADLINE" in WIP*|wip*) exit 0 ;; esac
+
+printf '%s' "$HEADLINE" | grep -qE '^(feat|feature|fix|patch|sunset|docs|chore|refactor|test|ci|build|perf|style|revert)(\([^)]*\))?!?: .{2,}' || {
+  echo "FAIL commit message 首行需为「<类型>(<范围>): <一句话说明》"
+  echo "     类型：feat feature fix patch sunset docs chore refactor test ci build perf style revert"
+  echo "     WIP 提交以 WIP 开头可豁免；确需绕过用 --no-verify（月度回顾会列出）"
+  exit 1
+}
+
+grep -q 'commit-checklist:' "$MSG" || \
+  echo "hint: message 末尾建议附 commit-checklist 勾选结果（见 docs/runbook/commit-checklist.md）"
+exit 0

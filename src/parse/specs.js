@@ -11,7 +11,14 @@ import {
   sectionBody,
 } from './markdown.js';
 import { parseMetadata, splitPair, countPlaceholders } from './metadata.js';
-import { extractAcTokens, parseAcChecklist, alignAc } from './ac.js';
+import {
+  alignAc,
+  deltaIsEmpty,
+  extractAcTokens,
+  parseAcChecklist,
+  parseDelta,
+  parseTaskChecklist,
+} from './ac.js';
 
 const SPECS_ROOT = 'docs/specs/';
 
@@ -77,7 +84,24 @@ function parsePatch(path, text, files) {
   }
 
   const acSection = sectionBody(masked, headingIncludes('验收标准'));
-  const acs = parseAcChecklist(acSection);
+  // 现行模板是 Delta 四段（### ADDED/MODIFIED/REMOVED/RENAMED），
+  // 早期 patch 是平铺验收清单——四段全空时退回旧格式兼容。
+  const delta = parseDelta(acSection);
+  const hasDelta = !deltaIsEmpty(delta);
+  // 需要测试点覆盖的生效标准：新增 + 修改 + 改名落地号；作废与旧号不算。
+  const acs = hasDelta
+    ? [
+        ...delta.added.map((a) => ({ ...a, kind: 'added' })),
+        ...delta.modified.map((a) => ({ ...a, kind: 'modified' })),
+        ...delta.renamed.map((r) => ({ id: r.to, text: '', kind: 'renamed' })),
+      ]
+    : parseAcChecklist(acSection);
+  // 对主文档已有 AC 的引用（MODIFIED/REMOVED/FROM）——必须真实存在（结构门禁 S5）
+  const refAcs = hasDelta
+    ? [...delta.modified.map((a) => a.id), ...delta.removed.map((a) => a.id), ...delta.renamed.map((r) => r.from)]
+    : [];
+
+  const taskSection = sectionBody(masked, headingIncludes('实施任务'));
 
   const numMatch = /^PATCH-(\d{3})/.exec(basename(path));
   // 破坏性字段在各模板里口径不同：patch 用「是 / 否」，changelog 用「有 / 无」
@@ -98,6 +122,9 @@ function parsePatch(path, text, files) {
     breaking: /^(有|是)/.test(breakingRaw),
     breakingNote: breakingRaw,
     acs,
+    delta: hasDelta ? delta : null,
+    refAcs,
+    tasks: parseTaskChecklist(taskSection),
     hasScopeSection: scope.includes('覆盖范围') && scope.length > 0,
     placeholders: countPlaceholders(text),
   };
@@ -145,8 +172,27 @@ function parseSpecFile(path, text, files) {
     scope: meta['适用范围'] || '',
     dates: splitPair(meta['创建 / 更新'] || ''),
     acs: parseAcChecklist(acSection),
+    tasks: parseTaskChecklist(sectionBody(masked, headingIncludes('实施任务'))),
     placeholders: countPlaceholders(text),
     hasTests: Boolean(testsText),
+  };
+}
+
+function parseProposal(path, text) {
+  const masked = maskFences(text);
+  const meta = parseMetadata(text);
+  const heading = parseHeadings(masked).find((h) => h.level === 1);
+  const numMatch = /^PROPOSAL-(\d{3})/.exec(basename(path));
+  return {
+    kind: 'proposal',
+    id: numMatch ? `PROPOSAL-${numMatch[1]}` : basename(path, '.md'),
+    file: path,
+    title: heading ? heading.text : basename(path, '.md'),
+    proposer: meta['提案人'] || '',
+    targetModule: meta['目标模块'] || '',
+    status: meta['状态'] || '',
+    dates: splitPair(meta['创建 / 更新'] || ''),
+    placeholders: countPlaceholders(text),
   };
 }
 
@@ -220,14 +266,17 @@ export function parseSpecs(files) {
 
       const patches = [];
       const sunsets = [];
+      const proposals = [];
       for (const [path, text] of files) {
         if (dirname(path) !== mod.path) continue;
         const base = basename(path);
         if (/^PATCH-\d{3}-/.test(base)) patches.push(parsePatch(path, text, files));
         else if (/^SUNSET-\d{3}-/.test(base)) sunsets.push(parseSunset(path, text));
+        else if (/^PROPOSAL-\d{3}-/.test(base)) proposals.push(parseProposal(path, text));
       }
       patches.sort((a, b) => a.id.localeCompare(b.id));
       sunsets.sort((a, b) => a.id.localeCompare(b.id));
+      proposals.sort((a, b) => a.id.localeCompare(b.id));
 
       const spec = specText ? parseSpecFile(specPath, specText, files) : null;
       const tests = testsText ? parseTestsFile(testsPath, testsText) : null;
@@ -244,15 +293,31 @@ export function parseSpecs(files) {
       }
 
       const patchAcs = patches.flatMap((p) => p.acs.map((a) => a.id));
+      const specAcIds = spec ? spec.acs.map((a) => a.id) : [];
+      const specAcSet = new Set(specAcIds);
+      // delta 对主文档已有 AC 的引用（MODIFIED/REMOVED/FROM）必须真实存在（S5 同口径）
+      // 没有 spec 时引用无从核对——主报「缺技术方案」，不再追加悬空清单
+      const danglingDeltaRefs = spec
+        ? [...new Set(patches.flatMap((p) => p.refAcs).filter((ac) => ac && !specAcSet.has(ac)))]
+        : [];
 
       const alignment = spec
-        ? alignAc({
-            specAcs: spec.acs.map((a) => a.id),
-            patchAcs,
-            testRefs: [...testRefs],
-            patchRefs: [...patchRefs],
-          })
-        : { uncoveredMain: [], uncoveredPatch: [], danglingMain: [], danglingPatch: [] };
+        ? {
+            ...alignAc({
+              specAcs: specAcIds,
+              patchAcs,
+              testRefs: [...testRefs],
+              patchRefs: [...patchRefs],
+            }),
+            danglingDeltaRefs,
+          }
+        : {
+            uncoveredMain: [],
+            uncoveredPatch: [],
+            danglingMain: [],
+            danglingPatch: [],
+            danglingDeltaRefs,
+          };
 
       modules.push({
         ...mod,
@@ -260,10 +325,12 @@ export function parseSpecs(files) {
         tests,
         patches,
         sunsets,
+        proposals,
         alignment,
-        // 主文档里指向本模块 patch 的反向指针（「已被 … PATCH-NNN …取代」）
+        // 主文档里指向本模块 patch 的反向指针（「已被 … PATCH-NNN …取代」）。
+        // 已收敛/已废弃的 patch 指针随收敛移除，缺指针是正确状态，不查。
         reversePointers: spec
-          ? patches.map((p) => ({
+          ? patches.filter((p) => !/已收敛|已废弃/.test(p.status)).map((p) => ({
               patchId: p.id,
               present: new RegExp(`已被[^\\n]*${p.id}`).test(specText),
             }))

@@ -90,7 +90,7 @@ test('补丁解析出覆盖范围、破坏性与验收标准', { skip }, () => {
   assert.equal(demo.patches.length, 1);
   const patch = demo.patches[0];
   assert.equal(patch.id, 'PATCH-001');
-  assert.equal(patch.status, '已合并');
+  assert.equal(patch.status, '已验证');
   assert.equal(patch.effectiveDate, '2026-09-09');
   assert.equal(patch.breaking, true, '示例补丁标记为破坏性');
   assert.ok(patch.before.includes('偏移量分页'));
@@ -98,6 +98,27 @@ test('补丁解析出覆盖范围、破坏性与验收标准', { skip }, () => {
   // AC-P001-1..3
   assert.equal(patch.acs.length, 3);
   assert.equal(patch.acs[0].id, 'AC-P001-1');
+
+  // Delta 四段：ADDED 2 + MODIFIED 1
+  assert.ok(patch.delta, '应解析出 Delta 结构');
+  assert.equal(patch.delta.added.length, 2);
+  assert.equal(patch.delta.modified.length, 1);
+  assert.equal(patch.delta.modified[0].id, 'AC-2');
+  // MODIFIED 引用主文档已有 AC —— 记入 refAcs（S5 同口径）
+  assert.deepEqual(patch.refAcs, ['AC-2']);
+});
+
+test('RENAMED delta 解析出 FROM/TO 成对', { skip }, () => {
+  const core = model.domains
+    .find((d) => d.name === '示范域')
+    .modules.find((m) => m.name === '核心循环');
+  const patch = core.patches[0];
+  assert.ok(patch.delta);
+  assert.equal(patch.delta.added.length, 3);
+  assert.deepEqual(patch.delta.renamed, [{ from: 'AC-1', to: 'AC-P001-4' }]);
+  // RENAMED TO 是需要测试覆盖的生效标准；FROM 只是对主文档的引用
+  assert.deepEqual(patch.refAcs, ['AC-1']);
+  assert.ok(patch.acs.some((a) => a.id === 'AC-P001-4'));
 });
 
 test('AC 对齐校验通过（示例仓库全绿）', { skip }, () => {
@@ -117,6 +138,11 @@ test('AC 对齐校验通过（示例仓库全绿）', { skip }, () => {
         mod.alignment.danglingMain,
         [],
         `${domain.name}/${mod.name} 不应有悬空引用`,
+      );
+      assert.deepEqual(
+        mod.alignment.danglingDeltaRefs,
+        [],
+        `${domain.name}/${mod.name} 不应有 delta 悬空引用`,
       );
     }
   }
@@ -166,11 +192,12 @@ test('工程原则被解析出来', { skip }, () => {
 test('变更时间线解析出条目、标签与破坏性', { skip }, () => {
   assert.ok(model.timeline.entries.length >= 4, `实际 ${model.timeline.entries.length} 条`);
 
-  // 仓库里标注「有」的破坏性变更：分页策略调整、结构门禁上线
+  // 仓库里标注「有」的破坏性变更：分页策略、结构门禁上线、变更过程机械化（patch 格式迁移）
   const breaking = model.timeline.breaking;
-  assert.equal(breaking.length, 2, `实际 ${breaking.length} 条：${breaking.map((b) => b.title).join('；')}`);
+  assert.equal(breaking.length, 3, `实际 ${breaking.length} 条：${breaking.map((b) => b.title).join('；')}`);
   assert.ok(breaking.some((b) => b.title.includes('分页策略')));
   assert.ok(breaking.some((b) => b.title.includes('结构门禁')));
+  assert.ok(breaking.some((b) => b.title.includes('变更过程机械化')));
 
   // 破坏性必须带上兼容性说明
   for (const entry of breaking) {
@@ -207,6 +234,8 @@ test('统计量与实际文档一致', { skip }, () => {
   assert.equal(stats.blueprints, 2);
   assert.equal(stats.patches, 2, '两个示例域各有一个补丁');
   assert.equal(stats.sunsets, 1);
+  assert.equal(stats.proposals, 0, '示例仓库暂无提案');
+  assert.equal(stats.templateVersion, '1.0.0', '应读出根目录 VERSION');
   assert.ok(stats.agentsLines > 0 && stats.agentsLines <= 120, `入口地图 ${stats.agentsLines} 行`);
   assert.ok(stats.placeholders > 0, '示例仓库仍含占位符');
 });
@@ -233,6 +262,14 @@ test('结构事实清单产出且带依据', { skip }, () => {
   // 每条事实都必须有依据出处
   for (const item of items) {
     assert.ok(item.title && item.detail && item.evidence, `事实缺少字段：${JSON.stringify(item)}`);
+  }
+});
+
+test('提案清单字段可用（示例仓库为空）', { skip }, () => {
+  for (const domain of model.domains) {
+    for (const mod of domain.modules) {
+      assert.ok(Array.isArray(mod.proposals), '每个功能点应有 proposals 数组');
+    }
   }
 });
 

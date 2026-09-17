@@ -3,6 +3,9 @@
 
 const TEXT_EXTENSIONS = ['.md', '.yaml', '.yml'];
 
+// 无扩展名但需要读取的文件
+const TEXT_FILES = new Set(['VERSION']);
+
 // 不进入的目录：体积大且与知识库无关
 const SKIP_DIRS = new Set([
   '.git',
@@ -21,9 +24,10 @@ const SKIP_DIRS = new Set([
 ]);
 
 // 需要读取的顶层目录与文件
-const WANTED_ROOTS = ['docs/', 'AGENTS.md', 'collar.yaml'];
+const WANTED_ROOTS = ['docs/', 'AGENTS.md', 'collar.yaml', 'VERSION'];
 
 function hasTextExtension(name) {
+  if (TEXT_FILES.has(name)) return true;
   const lower = name.toLowerCase();
   return TEXT_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }

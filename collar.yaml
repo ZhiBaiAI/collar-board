@@ -1,0 +1,132 @@
+# collar.yaml — 给 AI 套「项圈」的三层声明
+#
+# 心智模型：
+#   Identity   —— 你是谁、去哪读知识        （管「知道什么」）
+#   Boundary   —— 能碰什么、不能碰什么      （管「能改什么」，默认拒绝 deny-by-default）
+#   Validation —— 改完必须过的门禁          （管「改得对不对」）
+#
+# 本文件是声明式的「意图契约」，可被 CLI / 平台 / 沙箱各自解释执行。
+# 模板阶段所有列表是默认值，落地时按项目裁剪——裁剪只会收紧，不会放宽。
+
+version: 1
+
+identity:
+  role: "Collar 工程看板 的研发 Agent"
+  entry: AGENTS.md                 # 唯一入口，≤120 行
+  knowledge_base: docs/            # 六模块知识库
+  # 每次会话必须先读的「最小上下文集」，按顺序加载
+  must_read:
+    - AGENTS.md
+    - docs/specs/README.md         # 站点地图 + 四种变更类型
+    - docs/runbook/conventions.md  # 关键约定速查
+  # 按需加载：命中条件才读，避免上下文膨胀
+  lazy_read:
+    - when: "改动涉及外部依赖或参考实现"
+      read: docs/vendor/SOURCES.md
+    - when: "排查预发/线上不一致"
+      read: docs/runbook/environments.md
+
+boundary:
+  default: deny                    # 未在 allow 中显式列出的写操作一律拒绝
+  allow_write:
+    - "docs/**"                    # 知识库可写（这是知识沉淀的前提）
+    - "src/**"                     # 看板源码（parse/fs/ui 三层）
+    - "test/**"                    # node:test 测试
+    - "scripts/export-fixture.mjs" # 项目自有脚本；其余 scripts/ 是上游资产，走 collar-sync
+    - "index.html"
+    - "server.mjs"
+    - "package.json"
+    - "README.md"
+  deny_write:                      # 硬禁区，任何理由都不可改
+    - ".git/**"
+    - "node_modules/**"
+    - "VERSION"                    # 由 collar-sync.sh 维护，不手改
+  deny_command:                    # 危险命令黑名单
+    - "git push --force*"
+    - "git reset --hard*"
+    - "rm -rf *"
+  # 只读可达通道：外置到 DB/平台的逻辑，用 MCP 拉回 AI 视野（见 context-stitching.md）
+  read_only_channels: []           # 无外置逻辑通道（纯本地静态应用）
+
+  # 角色化边界 —— 参与者的工程素养越低，约束就必须越硬。
+  # dev 为默认角色（继承上面的 allow/deny）；non-dev 只能写提案与 wiki，
+  # 一切代码改动经审阅后由 dev 智能应用。执行体可落在 git 权限、
+  # Agent 白名单或平台沙箱（如 push URL 作废 / 权限白名单软硬双锁）。
+  roles:
+    dev:
+      default: true
+    non-dev:                          # 测试 / 产品 / 设计等基于代码上下文参与的角色
+      allow_write:
+        - "docs/specs/**/PROPOSAL-*.md"   # 只能写提案（见 _templates/proposal.md）
+        - "docs/wiki/**"                  # 与自由知识库
+      deny_command:
+        - "git push*"
+        - "git commit*"
+        - "git merge*"
+      changes_via: proposal            # 代码改动一律走提案通道，审阅后落库
+
+validation:
+  # 门禁分两类，承诺不同：
+  #   structure —— 结构门禁：检查知识库自身的形状，语言无关，复制模板即真实生效，
+  #                执行体是 scripts/collar-check.sh（只依赖 POSIX sh/grep/find/wc）
+  #   quality   —— 质量门禁：检查代码，语言相关，⟨占位⟩ 由项目落地时装配
+  #                （hooks / 包管理器钩子 / CI，装配方式见 commit-gate.md）
+  gates:
+    # ---- structure（真实命令，现在就拦截）----
+    - name: collar-check           # 知识库结构完整性（S0–S7 项见脚本头注释）
+      cmd: "sh scripts/collar-check.sh"
+      kind: structure
+      owner: collar-runbook
+    - name: agents-map-guard       # 入口地图行数守卫（已含在 collar-check S1）
+      rule: "AGENTS.md ≤ 120 行，逼近 115 行触发迁出提醒"
+      owner: collar-runbook
+    - name: spec-diff-report       # 代码 ↔ Spec 差异清单（语义级，Agent 执行）
+      rule: "只输出差异交人决策，禁止自动反向修改 Spec"
+      owner: collar-specs
+    - name: knowledge-deposit      # 知识沉淀强制门禁
+      rule: "一次提交 = changelog + runbook 同步落盘，不允许『下次一定』"
+      owner: collar-changelog
+    - name: context-stitch-check   # 上下文缝补检查（commit-gate ⑥）
+      rule: "提交时外置了逻辑（提示词/配置/脚本平台）→ 必须已缝补（MCP 通道 / //! 锚点 / ADR 登记），否则视为架构缺陷"
+      owner: collar-architecture
+    # ---- quality（⟨占位⟩，落地时按技术栈装配）----
+    - name: lint
+      cmd: "⟨make lint⟩"
+      kind: quality
+    - name: typecheck
+      cmd: "⟨make typecheck⟩"
+      kind: quality
+    - name: test
+      cmd: "npm test"               # node:test，真实生效
+      kind: quality
+  on_gate_failure: block            # block | warn
+
+# ---------------------------------------------------------------------------
+# authoring —— 写作规则一处真相
+#
+# context 是生成任何文档时注入的项目背景；rules 是每类产物的写作规则。
+# 各 Skill 生成/修改文档时读本节，避免规则在 AGENTS.md / conventions /
+# 各模板注释里多处抄写腐化。规则只会增细、不会放松。
+# ---------------------------------------------------------------------------
+authoring:
+  context: |
+    Collar 工程看板：Vanilla JS + ESM，零 npm 依赖、无构建步骤，node:test 测试。
+    只读解析 Collar SDD 规范项目并可视化；文档与注释用中文，代码标识符用英文。
+    口径：看板只呈现可机械核对的事实（出处必须可指），不评分、不算进度、不编造。
+  rules:
+    feature:
+      - "验收标准必须可观测、可判定——没见过代码的人也能判断过没过"
+      - "每条 AC 编号 AC-N 且不复用；接口契约节是路由/API 事实的唯一落点"
+      - "先过 §1.1 准入四问，写不准的事实进 §1.2 待确认表，禁止猜测填充"
+      - "§8 实施任务编号 T-N，提交时按覆盖勾选，全勾且无未决差异才许标已验证"
+    patch:
+      - "patch 自身必须可独立阅读，不依赖先读主文档"
+      - "§⑥ 验收标准用 Delta 四段：ADDED（AC-P 编号）/ MODIFIED / REMOVED（引用主文档 AC-N，必须存在）/ RENAMED（FROM:旧号→TO:新号成对）"
+      - "同一 AC-N 不跨 delta 小节；没有内容的小节整节删除"
+      - "双向指针缺一不落盘；改了验收标准必须同步同目录 tests.md"
+      - "§⑦ 实施任务编号 T-PNNN-N；收敛走 collar-converge.sh，文件保留不删除"
+    changelog:
+      - "只记做了什么与影响面，不记为什么——为什么进 ADR / spec 决策节"
+      - "BREAKING 变更加粗置顶并写明迁移方式"
+    runbook:
+      - "每条结论先于现象；现状文档只写现在时，历史叙述只进 changelog / ADR / 归档区"
