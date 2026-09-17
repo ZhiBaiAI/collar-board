@@ -16,12 +16,14 @@ import { renderDecisions, renderDecisionDetail } from './views/decisions.js';
 import { renderTimeline } from './views/timeline.js';
 import { renderFindings } from './views/findings.js';
 import { renderInflight } from './views/inflight.js';
+import { renderRunbook } from './views/runbook.js';
 
 const TABS = [
   { id: 'overview', label: '总览' },
   { id: 'map', label: '业务地图' },
   { id: 'inflight', label: '在途变更' },
   { id: 'decisions', label: '决策脉络' },
+  { id: 'runbook', label: '架构与排障' },
   { id: 'timeline', label: '变更时间线' },
   { id: 'findings', label: '结构事实' },
 ];
@@ -336,6 +338,7 @@ function renderView(model) {
     map: () => renderMap(model),
     inflight: () => renderInflight(model),
     decisions: () => renderDecisions(model),
+    runbook: () => renderRunbook(model),
     timeline: () => renderTimeline(model),
     findings: () => renderFindings(model),
   }[state.tab];
@@ -392,6 +395,82 @@ function wireViewEvents(container, model) {
         const filter = chip.dataset.findingFilter;
         for (const row of rows) {
           row.style.display = filter === 'all' || row.dataset.severity === filter ? '' : 'none';
+        }
+      });
+    }
+  }
+
+  // 排障剧本：症状关键词筛选
+  const pbFilters = container.querySelector('#pb-filters');
+  if (pbFilters) {
+    const rows = [...container.querySelectorAll('[data-pb]')];
+    for (const chip of pbFilters.querySelectorAll('[data-pb-filter]')) {
+      chip.addEventListener('click', () => {
+        pbFilters.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+        const filter = chip.dataset.pbFilter;
+        for (const row of rows) {
+          row.style.display =
+            filter === 'all' || (row.dataset.pbKw || '').split(' ').includes(filter) ? '' : 'none';
+        }
+      });
+    }
+  }
+
+  // 变更时间线：类型/破坏性筛选
+  const tlFilters = container.querySelector('#tl-filters');
+  if (tlFilters) {
+    const rows = [...container.querySelectorAll('[data-tl-tag]')];
+    const apply = (filter) => {
+      for (const row of rows) {
+        const match =
+          filter === 'all' ||
+          (filter === 'breaking' && row.dataset.tlBreaking === '1') ||
+          row.dataset.tlTag === filter;
+        row.style.display = match ? '' : 'none';
+      }
+      // 分组容器在其全部条目隐藏时跟着隐藏
+      for (const month of container.querySelectorAll('.timeline-month')) {
+        const visible = [...month.querySelectorAll('[data-tl-tag]')].some((r) => r.style.display !== 'none');
+        month.style.display = visible ? '' : 'none';
+      }
+    };
+    for (const chip of tlFilters.querySelectorAll('[data-tl-filter]')) {
+      chip.addEventListener('click', () => {
+        tlFilters.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+        apply(chip.dataset.tlFilter);
+      });
+    }
+  }
+
+  // 在途变更：类型筛选
+  const flFilters = container.querySelector('#fl-filters');
+  if (flFilters) {
+    const rows = [...container.querySelectorAll('[data-fl-kind]')];
+    for (const chip of flFilters.querySelectorAll('[data-fl-filter]')) {
+      chip.addEventListener('click', () => {
+        flFilters.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+        const filter = chip.dataset.flFilter;
+        for (const row of rows) {
+          row.style.display = filter === 'all' || row.dataset.flKind === filter ? '' : 'none';
+        }
+      });
+    }
+  }
+
+  // 业务地图：按业务域筛选
+  const dmFilters = container.querySelector('#dm-filters');
+  if (dmFilters) {
+    const blocks = [...container.querySelectorAll('[data-domain]')];
+    for (const chip of dmFilters.querySelectorAll('[data-dm-filter]')) {
+      chip.addEventListener('click', () => {
+        dmFilters.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+        const filter = chip.dataset.dmFilter;
+        for (const block of blocks) {
+          block.style.display = filter === 'all' || block.dataset.domain === filter ? '' : 'none';
         }
       });
     }

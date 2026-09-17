@@ -8,6 +8,7 @@ import { parseSpecs, parseClaimTable } from './specs.js';
 import { parseDecisions } from './decisions.js';
 import { parseTimeline } from './timeline.js';
 import { parseBlueprints } from './blueprints.js';
+import { parseArchitecture, parseTroubleshooting } from './runbook.js';
 import { parseCollar } from './yaml.js';
 import { deriveFindings, daysBetween, CONVERGE_OBSERVE_DAYS } from './findings.js';
 
@@ -26,6 +27,8 @@ export function buildModel(files, { today = new Date().toISOString().slice(0, 10
   const decisions = parseDecisions(files);
   const timeline = parseTimeline(files);
   const blueprints = parseBlueprints(files);
+  const architecture = parseArchitecture(files);
+  const troubleshooting = parseTroubleshooting(files);
 
   // 占位符统计：跳过模板目录，它们本就该保留占位符
   const placeholderFiles = [];
@@ -128,6 +131,8 @@ export function buildModel(files, { today = new Date().toISOString().slice(0, 10
     decisions,
     timeline,
     blueprints,
+    architecture,
+    troubleshooting,
     inflight,
     stats,
     files,

@@ -4,7 +4,7 @@ import { dash, escapeHtml, tagLabel, tagTone } from '../format.js';
 
 function entryHtml(entry) {
   return `
-    <div class="entry ${entry.breaking ? 'breaking' : ''}">
+    <div class="entry ${entry.breaking ? 'breaking' : ''}" data-tl-tag="${escapeHtml(entry.tag || '未分类')}" data-tl-breaking="${entry.breaking ? '1' : ''}">
       <div class="edate">${escapeHtml(entry.date)}</div>
       <div>
         <div class="etitle">
@@ -62,6 +62,16 @@ export function renderTimeline(model) {
     typeCounts[key] = (typeCounts[key] || 0) + 1;
   }
 
+  const chips = [
+    { id: 'all', label: '全部' },
+    { id: 'breaking', label: `破坏性（${breaking.length}）` },
+    ...Object.keys(typeCounts).map((tag) => ({ id: tag, label: `${tagLabel(tag)}（${typeCounts[tag]}）` })),
+  ];
+  const chipsHtml = `
+    <div class="chips" style="margin-bottom:14px" id="tl-filters">
+      ${chips.map((f, i) => `<button class="chip ${i === 0 ? 'active' : ''}" data-tl-filter="${escapeHtml(f.id)}">${escapeHtml(f.label)}</button>`).join('')}
+    </div>`;
+
   return `
     <div class="grid cols-4">
       <div class="metric"><div class="value">${entries.length}</div><div class="label">变更记录总数</div>
@@ -77,6 +87,7 @@ export function renderTimeline(model) {
     ${breakingHtml}
 
     <div class="section-title">按月份</div>
+    ${chipsHtml}
     ${monthsHtml}
 
     <div class="footnote">
