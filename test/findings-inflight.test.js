@@ -163,6 +163,28 @@ test('在途概览：已收敛 patch 不占在途；待审阅提案列出', () =
   assert.equal(model.inflight.proposals[0].proposal.id, 'PROPOSAL-001');
 });
 
+test('架构基线解析出结构视图小节（真实仓库）', async () => {
+  const { readRepo, exists } = await import('./helpers/repo.js');
+  const root = new URL('../../collar-sdd', import.meta.url).pathname;
+  if (!(await exists(`${root}/AGENTS.md`))) return;
+  const { parseArchitecture } = await import('../src/parse/runbook.js');
+  const arch = parseArchitecture(await readRepo(root));
+  assert.ok(arch.sections.length >= 2);
+  assert.ok(arch.sections.some((s) => s.name.includes('模块依赖')));
+});
+
+test('排障剧本解析出索引与字段块（真实仓库）', async () => {
+  const { readRepo, exists } = await import('./helpers/repo.js');
+  const root = new URL('../../collar-sdd', import.meta.url).pathname;
+  if (!(await exists(`${root}/AGENTS.md`))) return;
+  const { parseTroubleshooting } = await import('../src/parse/runbook.js');
+  const tr = parseTroubleshooting(await readRepo(root));
+  assert.ok(tr.index.length >= 2);
+  assert.ok(tr.playbooks.length >= 2);
+  const pb = tr.playbooks.find((p) => p.title.includes('结构门禁'));
+  assert.ok(pb.fields['现象'] && pb.fields['预防'], `实际字段：${Object.keys(pb.fields).join('、')}`);
+});
+
 test('在途概览：未归档 sunset 列出；结构缺口给负责人与 tests.md', () => {
   const sunset = `# SUNSET-001 下线剧本
 

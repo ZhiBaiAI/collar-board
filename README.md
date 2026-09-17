@@ -39,7 +39,7 @@ Firefox 官方立场是反对，Safari 完全不支持。
 
 看板全程只申请只读权限。
 
-## 六个视图
+## 七个视图
 
 | 视图 | 回答什么 | 数据来源 |
 |---|---|---|
@@ -47,8 +47,12 @@ Firefox 官方立场是反对，Safari 完全不支持。
 | 业务地图 | 有哪些业务域与功能点，各自什么状态 | `docs/specs/**/spec.md` |
 | 在途变更 | 哪些补丁未收敛、提案待审、日落在途、结构缺口——以及各自下一步 | `docs/specs/**`（同 `collar-status.sh` 口径） |
 | 决策脉络 | 做过哪些架构决策、各自何时该复审 | `docs/architecture/ADR/`、`principles/`、`docs/wiki/blue-print/` |
+| 架构与排障 | 系统此刻怎样运转（结构视图）+ 踩过的坑怎么修 | `docs/architecture/README.md`、`docs/runbook/troubleshooting.md` |
 | 变更时间线 | 什么时候改了什么、哪些有破坏性 | `docs/changelog/YYYY/YYYY-MM.md` |
 | 结构事实 | 哪些地方不符合规范、依据是什么、怎么修 | 全部文档的交叉核对 |
+
+各视图均带筛选：决策按状态、排障按症状关键词、时间线按类型/破坏性、
+在途按变更类型、业务地图按域、结构事实按严重度。
 
 点击任意功能点或决策卡片，会从右侧滑出明细：验收标准、测试点、补丁、日落记录等。
 
@@ -103,7 +107,7 @@ collar-board/
 │       ├── app.js            #   装配、交互、抽屉
 │       ├── format.js         #   格式化与转义
 │       ├── styles.css
-│       └── views/            #   六个视图
+│       └── views/            #   七个视图
 └── test/                     # 测试
 ```
 

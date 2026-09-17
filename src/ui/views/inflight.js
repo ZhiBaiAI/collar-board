@@ -3,9 +3,9 @@
 
 import { escapeHtml, statusTone, isUnfilled } from '../format.js';
 
-function inflightRow({ badge, badgeClass, title, meta, next, warn }) {
+function inflightRow({ badge, badgeClass, title, meta, next, warn, kind }) {
   return `
-    <div class="entry">
+    <div class="entry" data-fl-kind="${escapeHtml(kind || '')}">
       <div>
         <span class="badge ${badgeClass}">${escapeHtml(badge)}</span>
         ${warn ? '<span class="badge danger">⚠ 已超收敛观察期</span>' : ''}
@@ -59,6 +59,7 @@ export function renderInflight(model) {
             meta: `${p.patch.file}${p.age !== null ? ` · 生效 ${p.age} 天` : ''}`,
             next: patchNext(p.patch),
             warn: p.overdue,
+            kind: 'patch',
           }),
         )
         .join('')
@@ -73,6 +74,7 @@ export function renderInflight(model) {
             title: `${p.domain} / ${p.module} · ${p.proposal.id} ${p.proposal.title}`,
             meta: `${p.proposal.file}${p.proposal.proposer ? ` · ${p.proposal.proposer}` : ''}`,
             next: '审阅后标记「已通过 / 已驳回」，通过后落库为正式变更',
+            kind: 'proposal',
           }),
         )
         .join('')
@@ -87,6 +89,7 @@ export function renderInflight(model) {
             title: `${s.domain} / ${s.module} · ${s.sunset.id} ${s.sunset.title}`,
             meta: s.sunset.file,
             next: '按日落剧本推进状态机，归档日填真实日期后离列',
+            kind: 'sunset',
           }),
         )
         .join('')
@@ -101,11 +104,26 @@ export function renderInflight(model) {
     }
   }
   const gapHtml = gaps.length
-    ? `<ul class="plain-list">${gaps.map((g) => `<li class="mono">${escapeHtml(g)}</li>`).join('')}</ul>`
+    ? `<ul class="plain-list">${gaps.map((g) => `<li class="mono" data-fl-kind="gap">${escapeHtml(g)}</li>`).join('')}</ul>`
     : '<div class="hint">没有结构缺口。</div>';
+
+  const chipsHtml = total || gaps.length
+    ? `<div class="chips" style="margin-bottom:14px" id="fl-filters">
+        ${[
+          { id: 'all', label: '全部' },
+          { id: 'patch', label: `补丁（${inflight.patches.length}）` },
+          { id: 'proposal', label: `提案（${inflight.proposals.length}）` },
+          { id: 'sunset', label: `日落（${inflight.sunsets.length}）` },
+          { id: 'gap', label: `结构缺口（${gaps.length}）` },
+        ]
+          .map((f, i) => `<button class="chip ${i === 0 ? 'active' : ''}" data-fl-filter="${f.id}">${f.label}</button>`)
+          .join('')}
+      </div>`
+    : '';
 
   return `
     ${metrics}
+    ${chipsHtml}
 
     <div class="section-title">在途补丁（未收敛 / 未废弃）</div>
     <div class="card">${patchHtml}</div>

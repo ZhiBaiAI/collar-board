@@ -52,7 +52,7 @@ export function renderMap(model) {
   const blocks = model.domains
     .map(
       (domain) => `
-      <div class="domain-block">
+      <div class="domain-block" data-domain="${escapeHtml(domain.name)}">
         <div class="domain-head">
           <h3>${escapeHtml(domain.name)}</h3>
           <span class="path">${escapeHtml(domain.dir)}</span>
@@ -65,10 +65,23 @@ export function renderMap(model) {
     )
     .join('');
 
+  const chipsHtml =
+    model.domains.length > 1
+      ? `<div class="chips" style="margin-bottom:14px" id="dm-filters">
+        ${['全部', ...model.domains.map((d) => d.name)]
+          .map(
+            (name, i) =>
+              `<button class="chip ${i === 0 ? 'active' : ''}" data-dm-filter="${escapeHtml(name === '全部' ? 'all' : name)}">${escapeHtml(name)}</button>`,
+          )
+          .join('')}
+      </div>`
+      : '';
+
   return `
     <div class="footnote" style="margin:0 0 16px">
       点击任意功能点可展开明细。状态取值来自技术方案的元数据表，未做任何换算。
     </div>
+    ${chipsHtml}
     ${blocks}`;
 }
 
