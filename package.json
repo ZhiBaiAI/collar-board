@@ -1,0 +1,15 @@
+{
+  "name": "collar-board",
+  "version": "0.1.0",
+  "private": true,
+  "description": "只读工程看板：解析 Collar SDD 规范项目，可视化业务地图、决策脉络与变更时间线",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test \"test/**/*.test.js\"",
+    "export-fixture": "node scripts/export-fixture.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

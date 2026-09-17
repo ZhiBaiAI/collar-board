@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Collar 工程看板</title>
+    <link rel="stylesheet" href="./src/ui/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>Collar 工程看板</h1>
+          <p>只读 · 不写入项目任何文件</p>
+        </div>
+
+        <div class="sidebar-section">项目</div>
+        <div class="project-list" id="project-list"></div>
+
+        <div class="sidebar-actions">
+          <button class="primary" id="import-btn">导入项目</button>
+          <div class="hint" style="font-size:11.5px;line-height:1.6">
+            选择规范项目的根目录。<br />
+            页面重新打开后需再次确认授权，这是浏览器安全机制。
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="topbar" id="topbar"></div>
+        <div class="tabs" id="tabs"></div>
+        <div style="padding:16px 24px 0" id="notices"></div>
+        <div class="view" id="view"></div>
+      </main>
+    </div>
+
+    <script>
+      // 启动阶段失败时把原因显示出来，避免只剩一个空白页面。
+      // 启动完成后（view.dataset.booted === '1'）不再替换界面——
+      // 运行期错误由各处的提示条呈现，不该抹掉用户正在看的内容。
+      function showBootFailure(detail) {
+        const view = document.getElementById('view');
+        if (!view || view.dataset.booted === '1') return;
+        view.innerHTML =
+          '<div class="empty"><h2>看板启动失败</h2>' +
+          '<p class="mono" style="word-break:break-all">' +
+          String(detail) +
+          '</p>' +
+          '<p style="font-size:12.5px">请确认使用的是 Chrome 或 Edge 等 Chromium 内核浏览器，' +
+          '并通过 <span class="mono">npm start</span> 启动后访问 http://localhost:5173。</p></div>';
+      }
+      window.addEventListener('error', (event) => showBootFailure(event.message || event.error));
+      window.addEventListener('unhandledrejection', (event) => showBootFailure(event.reason));
+    </script>
+    <script type="module">
+      // 用动态导入包裹启动流程：模块导入阶段的失败不会冒泡到 window.onerror，
+      // 必须在这里显式捕获，否则页面只会是一片空白。
+      try {
+        await import('./src/ui/app.js');
+      } catch (error) {
+        showBootFailure(error?.stack || error?.message || error);
+      }
+    </script>
+  </body>
+</html>
