@@ -64,7 +64,7 @@ function playbookHtml(pb, keywords) {
     )
     .join('');
   return `
-    <div class="entry" data-pb="${escapeHtml(pb.title)}" data-pb-kw="${escapeHtml(keywords.join(' '))}">
+    <div class="entry plain" data-pb="${escapeHtml(pb.title)}" data-pb-kw="${escapeHtml(keywords.join(' '))}">
       <div>
         <div class="etitle">${escapeHtml(pb.title)}</div>
         ${keywords.length ? `<div class="tag-row" style="margin:4px 0 0">${keywords.map((k) => `<span class="badge">${escapeHtml(k)}</span>`).join('')}</div>` : ''}

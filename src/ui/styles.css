@@ -607,6 +607,11 @@ table.data td.num {
   border-bottom: none;
 }
 
+/* 单栏条目（排障剧本这类没有左列的内容） */
+.entry.plain {
+  grid-template-columns: 1fr;
+}
+
 .entry .edate {
   font-size: 12px;
   color: var(--text-faint);
