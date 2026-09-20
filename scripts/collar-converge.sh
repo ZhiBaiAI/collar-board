@@ -129,9 +129,10 @@ printf '%s\n' "$TSV" | awk -v patch="$BASE" '
 ' - "$SPEC" > "$TMP" && mv "$TMP" "$SPEC"
 
 # --- patch 收尾：状态改已收敛 + 顶部标注 -----------------------------------
-sed -i "s/^| 状态 |.*|$/| 状态 | 已收敛 |/" "$PATCH"
+# 不用 sed -i：BSD sed（macOS）把下一个参数当备份后缀，GNU 写法会直接失败。
 awk -v d="$DATE" -v s="$SPEC" '
   NR==1 { print; print ""; print "> 已收敛 → 并入 " s "（" d "），本文件保留作历史。"; next }
+  /^\| 状态 \|/ { print "| 状态 | 已收敛 |"; next }
   { print }
 ' "$PATCH" > "$PATCH.tmp" && mv "$PATCH.tmp" "$PATCH"
 

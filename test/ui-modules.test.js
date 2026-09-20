@@ -25,9 +25,14 @@ const files = await collectJs(SRC);
 test('界面与解析模块都能被解析（无语法错误）', async () => {
   for (const file of files) {
     const source = await readFile(file, 'utf8');
-    // 用动态导入前的静态检查：能构造出模块记录即说明语法正确
-    assert.doesNotThrow(() => new Function(`return 0`), file);
-    assert.ok(source.length > 0, `${relative(ROOT, file)} 为空`);
+    const label = relative(ROOT, file);
+    assert.ok(source.length > 0, `${label} 为空`);
+    // ESM import/export 不能直接喂给 Function；剥掉后按脚本体解析，语法错误会在这里爆。
+    const scriptBody = source
+      .replace(/^\s*import\s[\s\S]*?from\s+['"][^'"]+['"];?\s*/gm, '')
+      .replace(/^\s*export\s+\{[\s\S]*?\}\s*;?\s*/gm, '')
+      .replace(/^\s*export\s+/gm, '');
+    assert.doesNotThrow(() => new Function(scriptBody), label);
   }
 });
 

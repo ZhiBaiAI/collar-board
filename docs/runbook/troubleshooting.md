@@ -27,6 +27,7 @@
 |---|---|
 | 门禁全绿但违规没被拦 / 检查恒真 | [结构门禁静默失效](#结构门禁报全绿但实际没在检查) |
 | unbound variable（变量后紧跟中文标点） | [全角标点并入变量名](#shell-变量后紧跟全角标点导致-unbound-variable) |
+| sed: invalid command code / 冷启示范行删不掉 / 收敛卡在已收敛 | [BSD sed -i 失败](#macos-上-sed--i-把下一参数当备份后缀) |
 
 ---
 
@@ -59,6 +60,16 @@
 - **预防**：写含中文的 shell 脚本时统一用花括号，不依赖裸 `$VAR`。
   扫描残留：`\$([A-Za-z_][A-Za-z0-9_]*)(?=[^\x00-\x7F])`（应零命中）
 - **证据**：`scripts/collar-check.sh`；2026-09-15
+
+---
+
+## macOS 上 sed -i 把下一参数当备份后缀
+
+- **现象**：`sh scripts/collar-init.sh --yes` 或 `sh scripts/collar-converge.sh …` 报 `sed: … invalid command code f`（或把脚本参数吃成备份后缀）；认领表示范行还在，或 spec 已合并但 patch 状态仍不是「已收敛」
+- **根因**：GNU sed 的 `sed -i 'expr' file` 在 BSD sed（macOS 默认）里会把 `'expr'` 当成备份后缀、把 `file` 当表达式。脚本约定只依赖 POSIX sh，不能假定 GNU sed
+- **解法**：就地改文件一律 `awk … > tmp && mv`，与同脚本里清空 changelog、写收敛注释的写法一致
+- **预防**：脚本里禁止 `sed -i`。改脚本后在 macOS 上用临时副本跑 `--yes` / 收敛，确认会改文件且不报 sed 错
+- **证据**：`scripts/collar-init.sh`、`scripts/collar-converge.sh`；2026-09-20 本机实测 `sed -i '/⟨示例/d' file` 退出码 1
 
 ---
 

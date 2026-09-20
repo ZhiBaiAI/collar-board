@@ -58,12 +58,13 @@ done
 # 3) changelog 只留标题与说明行（截到第一个 ### 条目前）
 if [ -f "$CFILE" ]; then
   awk '/^### /{exit} {print}' "$CFILE" > "$CFILE.tmp" && mv "$CFILE.tmp" "$CFILE"
-  echo "cleaned  $CFILE（示范条目已清空）"
+  echo "cleaned  ${CFILE}（示范条目已清空）"
 fi
 
 # 4) 认领表示例行：删含 ⟨示例 的行
+# 不用 sed -i：BSD sed（macOS）把下一个参数当备份后缀，GNU 写法会直接失败。
 if grep -q '⟨示例' docs/specs/README.md 2>/dev/null; then
-  sed -i '/⟨示例/d' docs/specs/README.md
+  awk '!/⟨示例/' docs/specs/README.md > docs/specs/README.md.tmp && mv docs/specs/README.md.tmp docs/specs/README.md
   echo "cleaned  docs/specs/README.md 认领表示例行"
 fi
 
