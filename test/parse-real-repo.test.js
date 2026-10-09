@@ -215,14 +215,17 @@ test('变更时间线解析出条目、标签与破坏性', { skip }, () => {
 
   // 按月分组供时间线视图使用
   assert.ok(model.timeline.byMonth.length >= 1);
-  assert.equal(model.timeline.byMonth[0].month, '2026-09');
+  assert.equal(model.timeline.byMonth[0].month, '2026-10');
 });
 
 test('蓝图解析出成熟度', { skip }, () => {
-  assert.equal(model.blueprints.length, 2, '有两份蓝图');
+  assert.equal(model.blueprints.length, 3, '有三份蓝图');
   const tech = model.blueprints.find((b) => b.maturity === '[技术方案]');
   assert.ok(tech, '应识别出技术方案成熟度');
   assert.ok(tech.openQuestions.length >= 1);
+  const research = model.blueprints.find((b) => b.maturity === '[调研]');
+  assert.ok(research, '应识别出调研成熟度');
+  assert.ok(research.graduation.length >= 1, '毕业评估表应被解析出来');
 });
 
 test('统计量与实际文档一致', { skip }, () => {
@@ -231,7 +234,7 @@ test('统计量与实际文档一致', { skip }, () => {
   assert.equal(stats.modules, 2);
   assert.equal(stats.adrs, 1);
   assert.equal(stats.principles, 1);
-  assert.equal(stats.blueprints, 2);
+  assert.equal(stats.blueprints, 3);
   assert.equal(stats.patches, 2, '两个示例域各有一个补丁');
   assert.equal(stats.sunsets, 1);
   assert.equal(stats.proposals, 0, '示例仓库暂无提案');
